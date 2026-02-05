@@ -1,6 +1,7 @@
 import { getImageMetadata, resizeToJpeg } from "../media/image-ops.js";
 
-export const DEFAULT_BROWSER_SCREENSHOT_MAX_SIDE = 2000;
+// Increased to 3000 to improve readability of text in screenshots
+export const DEFAULT_BROWSER_SCREENSHOT_MAX_SIDE = 3000;
 export const DEFAULT_BROWSER_SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
 
 export async function normalizeBrowserScreenshot(

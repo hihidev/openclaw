@@ -17,7 +17,7 @@ import { redactSensitiveText } from "../logging/redact.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { mediaKindFromMime } from "../media/constants.js";
 import { isGifMedia } from "../media/mime.js";
-import { loadWebMedia } from "../web/media.js";
+import { loadWebMedia, loadWebMediaRaw } from "../web/media.js";
 import { type ResolvedTelegramAccount, resolveTelegramAccount } from "./accounts.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { buildTelegramThreadParams } from "./bot/helpers.js";
@@ -383,7 +383,8 @@ export async function sendMessageTelegram(
   };
 
   if (mediaUrl) {
-    const media = await loadWebMedia(mediaUrl, opts.maxBytes);
+    // Use loadWebMediaRaw to avoid image optimization/compression for full quality
+    const media = await loadWebMediaRaw(mediaUrl, opts.maxBytes);
     const kind = mediaKindFromMime(media.contentType ?? undefined);
     const isGif = isGifMedia({
       contentType: media.contentType,
@@ -444,13 +445,22 @@ export async function sendMessageTelegram(
           }),
       );
     } else if (kind === "image") {
-      result = await sendWithThreadFallback(mediaParams, "photo", async (effectiveParams, label) =>
-        requestWithDiag(
-          () => api.sendPhoto(chatId, file, effectiveParams as Parameters<typeof api.sendPhoto>[2]),
-          label,
-        ).catch((err) => {
-          throw wrapChatNotFound(err);
-        }),
+      // Use sendDocument instead of sendPhoto to avoid compression (HD mode)
+      result = await sendWithThreadFallback(
+        mediaParams,
+        "document",
+        async (effectiveParams, label) =>
+          requestWithDiag(
+            () =>
+              api.sendDocument(
+                chatId,
+                file,
+                effectiveParams as Parameters<typeof api.sendDocument>[2],
+              ),
+            label,
+          ).catch((err) => {
+            throw wrapChatNotFound(err);
+          }),
       );
     } else if (kind === "video") {
       if (isVideoNote) {
