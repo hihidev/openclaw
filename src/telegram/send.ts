@@ -19,7 +19,7 @@ import type { MediaKind } from "../media/constants.js";
 import { buildOutboundMediaLoadOptions } from "../media/load-options.js";
 import { isGifMedia, kindFromMime } from "../media/mime.js";
 import { normalizePollInput, type PollInput } from "../polls.js";
-import { loadWebMedia } from "../web/media.js";
+import { loadWebMediaRaw } from "../web/media.js";
 import { type ResolvedTelegramAccount, resolveTelegramAccount } from "./accounts.js";
 import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { buildTelegramThreadParams } from "./bot/helpers.js";
@@ -559,7 +559,8 @@ export async function sendMessageTelegram(
   };
 
   if (mediaUrl) {
-    const media = await loadWebMedia(
+    // Use loadWebMediaRaw to preserve source image quality (Telegram HD mode).
+    const media = await loadWebMediaRaw(
       mediaUrl,
       buildOutboundMediaLoadOptions({
         maxBytes: opts.maxBytes,
@@ -628,12 +629,12 @@ export async function sendMessageTelegram(
       }
       if (kind === "image") {
         return {
-          label: "photo",
+          label: "document",
           sender: (effectiveParams: Record<string, unknown> | undefined) =>
-            api.sendPhoto(
+            api.sendDocument(
               chatId,
               file,
-              effectiveParams as Parameters<typeof api.sendPhoto>[2],
+              effectiveParams as Parameters<typeof api.sendDocument>[2],
             ) as Promise<TelegramMessageLike>,
         };
       }
