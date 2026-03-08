@@ -302,6 +302,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Enables elevated tool execution path when sender and policy checks pass. Keep disabled in public/shared channels and enable only for trusted owner-operated contexts.",
   "tools.elevated.allowFrom":
     "Sender allow rules for elevated tools, usually keyed by channel/provider identity formats. Use narrow, explicit identities so elevated commands cannot be triggered by unintended users.",
+  "agents.defaults.subagents.reviewBeforeDelivery":
+    "When enabled, suppress direct delivery of subagent completion results to external channels. Instead, the parent agent receives the result for review and synthesis before responding to the user. Use this for manager/orchestrator patterns where the parent must process subagent output before delivery.",
   "tools.subagents":
     "Tool policy wrapper for spawned subagents to restrict or expand tool availability compared to parent defaults. Use this to keep delegated agent capabilities scoped to task intent.",
   "tools.subagents.tools":

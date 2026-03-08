@@ -706,6 +706,7 @@ export const AgentEntrySchema = z
           ])
           .optional(),
         thinking: z.string().optional(),
+        reviewBeforeDelivery: z.boolean().optional(),
       })
       .strict()
       .optional(),

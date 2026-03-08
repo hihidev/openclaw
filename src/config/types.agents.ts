@@ -26,6 +26,8 @@ export type AgentConfig = {
     allowAgents?: string[];
     /** Per-agent default model for spawned sub-agents (string or {primary,fallbacks}). */
     model?: AgentModelConfig;
+    /** When true, suppress direct delivery of subagent results and let the parent review first. */
+    reviewBeforeDelivery?: boolean;
   };
   /** Optional per-agent sandbox overrides. */
   sandbox?: AgentSandboxConfig;
