@@ -722,6 +722,38 @@ describe("buildSubagentSystemPrompt", () => {
     expect(prompt).toContain("reported to the parent orchestrator");
   });
 
+  it("includes orchestrator role directive for depth-1 with maxSpawnDepth=2", () => {
+    const prompt = buildSubagentSystemPrompt({
+      childSessionKey: "agent:main:subagent:orchestrator",
+      task: "coordinate workers",
+      childDepth: 1,
+      maxSpawnDepth: 2,
+    });
+    expect(prompt).toContain("Your role is ORCHESTRATOR");
+    expect(prompt).toContain("delegate ALL such work to workers");
+  });
+
+  it("omits orchestrator directive for depth-1 leaf (maxSpawnDepth=1)", () => {
+    const prompt = buildSubagentSystemPrompt({
+      childSessionKey: "agent:main:subagent:leaf",
+      task: "simple task",
+      childDepth: 1,
+      maxSpawnDepth: 1,
+    });
+    expect(prompt).not.toContain("Your role is ORCHESTRATOR");
+  });
+
+  it("omits orchestrator directive for depth-2 mid-tier (maxSpawnDepth=3)", () => {
+    const prompt = buildSubagentSystemPrompt({
+      childSessionKey: "agent:main:subagent:mid:subagent:child",
+      task: "mid-tier task",
+      childDepth: 2,
+      maxSpawnDepth: 3,
+    });
+    // Depth 2 can spawn (maxSpawnDepth=3) but is not the top orchestrator
+    expect(prompt).not.toContain("Your role is ORCHESTRATOR");
+  });
+
   it("omits spawning guidance for depth-1 leaf agents", () => {
     const leafCases = [
       {

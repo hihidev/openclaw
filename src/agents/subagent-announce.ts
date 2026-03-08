@@ -1058,6 +1058,16 @@ export function buildSubagentSystemPrompt(params: {
         : []),
       "",
     );
+    // Depth-1 orchestrators that can spawn workers get an explicit role directive.
+    if (childDepth === 1) {
+      lines.push(
+        "**Your role is ORCHESTRATOR.** Decompose work into subtasks, delegate each " +
+          "to a leaf worker via sessions_spawn, review their results, and synthesize a " +
+          "final report. Do NOT attempt implementation, code edits, or execution yourself — " +
+          "delegate ALL such work to workers. You may read files for context.",
+        "",
+      );
+    }
   } else if (childDepth >= 2) {
     lines.push(
       "## Sub-Agent Spawning",
