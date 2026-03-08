@@ -2219,6 +2219,72 @@ describe("subagent announce formatting", () => {
       expect(message).not.toContain("Process this result according to your session instructions");
     });
 
+    it("3-tier lifecycle: orchestrator announce with label + task includes taskDescription", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          defaults: { subagents: { maxSpawnDepth: 2, reviewBeforeDelivery: true } },
+          list: [{ id: "main", subagents: { reviewBeforeDelivery: true } }],
+        },
+      };
+      sessionStore = {
+        "agent:main:subagent:orchestrator": { sessionId: "orch-1" },
+        "agent:main:main": { sessionId: "main-1" },
+      };
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:orchestrator",
+        childRunId: "run-orch-lifecycle",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        requesterOrigin: { channel: "telegram", to: "telegram:123", accountId: "acct-1" },
+        ...defaultOutcomeAnnounce,
+        task: "orchestrate research",
+        label: "research-orchestrator",
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(agentSpy).toHaveBeenCalled();
+      const call = agentSpy.mock.calls[0]?.[0] as { params?: Record<string, unknown> };
+      const message = typeof call?.params?.message === "string" ? call.params.message : "";
+      expect(message).toContain("Process this result according to your session instructions");
+      expect(message).toContain("task: research-orchestrator");
+      expect(message).toContain("task_description: orchestrate research");
+    });
+
+    it("worker timeout triggers orchestrator review with error status (inner loop)", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          defaults: { subagents: { maxSpawnDepth: 2, reviewBeforeDelivery: true } },
+        },
+      };
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:orchestrator:subagent:worker",
+        childRunId: "run-worker-timeout",
+        requesterSessionKey: "agent:main:subagent:orchestrator",
+        requesterOrigin: { channel: "telegram", to: "telegram:123", accountId: "acct-1" },
+        requesterDisplayKey: "agent:main:subagent:orchestrator",
+        ...defaultOutcomeAnnounce,
+        outcome: { status: "timeout" },
+        task: "fetch data",
+      });
+
+      expect(didAnnounce).toBe(true);
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(agentSpy).toHaveBeenCalled();
+      const call = agentSpy.mock.calls[0]?.[0] as { params?: Record<string, unknown> };
+      const message = typeof call?.params?.message === "string" ? call.params.message : "";
+      expect(message).toContain("timed out");
+      expect(message).toContain(
+        "Convert this completion into a concise internal orchestration update",
+      );
+      expect(call?.params?.deliver).toBe(false);
+    });
+
     it("still holds when pending descendants also exist", async () => {
       configOverride = {
         session: { mainKey: "main", scope: "per-sender" },
