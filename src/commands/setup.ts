@@ -7,6 +7,7 @@ import { resolveSessionTranscriptsDir } from "../config/sessions.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { shortenHomePath } from "../utils.js";
+import { applyManagerPatternDefaults } from "./onboard-config.js";
 
 async function readConfigFileRaw(configPath: string): Promise<{
   exists: boolean;
@@ -36,7 +37,7 @@ export async function setupCommand(
   const io = createConfigIO();
   const configPath = io.configPath;
   const existingRaw = await readConfigFileRaw(configPath);
-  const cfg = existingRaw.parsed;
+  const cfg = applyManagerPatternDefaults(existingRaw.parsed);
   const defaults = cfg.agents?.defaults ?? {};
 
   const workspace = desiredWorkspace ?? defaults.workspace ?? DEFAULT_AGENT_WORKSPACE_DIR;

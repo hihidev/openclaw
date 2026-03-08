@@ -79,6 +79,9 @@ describe("ensureAgentWorkspace", () => {
 
     await expectBootstrapSeeded(tempDir);
     expect((await readOnboardingState(tempDir)).onboardingCompletedAt).toBeUndefined();
+    const soulContent = await fs.readFile(path.join(tempDir, "SOUL.md"), "utf-8");
+    expect(soulContent).toContain("## Mandatory Delegation Gate");
+    expect(soulContent).toContain("Treat the task as `DELEGATE` immediately");
   });
 
   it("recovers partial initialization by creating BOOTSTRAP.md when marker is missing", async () => {
