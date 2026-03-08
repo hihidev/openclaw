@@ -1265,6 +1265,7 @@ export async function runSubagentAnnounceFlow(params: {
     // Build instructional message for main agent
     const announceType = params.announceType ?? "subagent task";
     const taskLabel = params.label || params.task || "task";
+    const taskDescription = params.label && params.task ? params.task : undefined;
     const subagentName = resolveAgentIdFromSessionKey(params.childSessionKey);
     const announceSessionId = childSessionId || "unknown";
     const findings = reply || "(no output)";
@@ -1348,6 +1349,7 @@ export async function runSubagentAnnounceFlow(params: {
         childSessionId: announceSessionId,
         announceType,
         taskLabel,
+        taskDescription,
         status: outcome.status,
         statusLabel,
         result: findings,
