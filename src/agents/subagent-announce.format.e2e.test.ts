@@ -2025,4 +2025,180 @@ describe("subagent announce formatting", () => {
       expect(call?.params?.channel, testCase.name).toBe(testCase.expectedChannel);
     }
   });
+
+  describe("reviewBeforeDelivery", () => {
+    it("suppresses direct send on external channels when per-agent flag is set", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          list: [{ id: "main", subagents: { reviewBeforeDelivery: true } }],
+        },
+      };
+      sessionStore = {
+        "agent:main:subagent:test": { sessionId: "child-review-1" },
+        "agent:main:main": { sessionId: "requester-review-1" },
+      };
+      chatHistoryMock.mockResolvedValueOnce({
+        messages: [{ role: "assistant", content: [{ type: "text", text: "subagent result" }] }],
+      });
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:test",
+        childRunId: "run-review-1",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        requesterOrigin: { channel: "discord", to: "channel:12345", accountId: "acct-1" },
+        ...defaultOutcomeAnnounce,
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      // Direct send suppressed — goes to agent instead
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(agentSpy).toHaveBeenCalled();
+    });
+
+    it("uses global defaults when per-agent flag is not set", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          defaults: { subagents: { reviewBeforeDelivery: true } },
+        },
+      };
+      sessionStore = {
+        "agent:main:subagent:test": { sessionId: "child-review-2" },
+        "agent:main:main": { sessionId: "requester-review-2" },
+      };
+      chatHistoryMock.mockResolvedValueOnce({
+        messages: [{ role: "assistant", content: [{ type: "text", text: "result from global" }] }],
+      });
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:test",
+        childRunId: "run-review-2",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        requesterOrigin: { channel: "telegram", to: "telegram:123", accountId: "acct-2" },
+        ...defaultOutcomeAnnounce,
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(agentSpy).toHaveBeenCalled();
+    });
+
+    it("per-agent false overrides global true — direct send preserved", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          defaults: { subagents: { reviewBeforeDelivery: true } },
+          list: [{ id: "main", subagents: { reviewBeforeDelivery: false } }],
+        },
+      };
+      sessionStore = {
+        "agent:main:subagent:test": { sessionId: "child-review-3" },
+        "agent:main:main": { sessionId: "requester-review-3" },
+      };
+      chatHistoryMock.mockResolvedValueOnce({
+        messages: [{ role: "assistant", content: [{ type: "text", text: "direct delivery" }] }],
+      });
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:test",
+        childRunId: "run-review-3",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        requesterOrigin: { channel: "discord", to: "channel:12345", accountId: "acct-3" },
+        ...defaultOutcomeAnnounce,
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      // Per-agent false wins — direct send fires
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(agentSpy).not.toHaveBeenCalled();
+    });
+
+    it("no flag = direct send preserved (regression)", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+      };
+      sessionStore = {
+        "agent:main:subagent:test": { sessionId: "child-review-4" },
+        "agent:main:main": { sessionId: "requester-review-4" },
+      };
+      chatHistoryMock.mockResolvedValueOnce({
+        messages: [{ role: "assistant", content: [{ type: "text", text: "normal delivery" }] }],
+      });
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:test",
+        childRunId: "run-review-4",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        requesterOrigin: { channel: "whatsapp", to: "+1555", accountId: "acct-4" },
+        ...defaultOutcomeAnnounce,
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(agentSpy).not.toHaveBeenCalled();
+    });
+
+    it("does not affect subagent parents (requesterIsSubagent=true)", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          defaults: { subagents: { reviewBeforeDelivery: true } },
+        },
+      };
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:orchestrator:subagent:worker",
+        childRunId: "run-review-5",
+        requesterSessionKey: "agent:main:subagent:orchestrator",
+        requesterOrigin: { channel: "discord", to: "channel:12345", accountId: "acct-5" },
+        requesterDisplayKey: "agent:main:subagent:orchestrator",
+        ...defaultOutcomeAnnounce,
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      // Subagent-to-subagent: direct send never fires (requesterIsSubagent=true),
+      // regardless of reviewBeforeDelivery flag
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(agentSpy).toHaveBeenCalled();
+    });
+
+    it("still holds when pending descendants also exist", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          list: [{ id: "main", subagents: { reviewBeforeDelivery: true } }],
+        },
+      };
+      sessionStore = {
+        "agent:main:subagent:test": { sessionId: "child-review-6" },
+        "agent:main:main": { sessionId: "requester-review-6" },
+      };
+      // Even with pending descendants, reviewBeforeDelivery still suppresses direct send
+      subagentRegistryMock.countPendingDescendantRunsExcludingRun.mockReturnValue(1);
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:test",
+        childRunId: "run-review-6",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        requesterOrigin: { channel: "discord", to: "channel:12345", accountId: "acct-6" },
+        ...defaultOutcomeAnnounce,
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(agentSpy).toHaveBeenCalled();
+    });
+  });
 });

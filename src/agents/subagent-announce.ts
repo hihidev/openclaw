@@ -22,6 +22,7 @@ import {
   normalizeDeliveryContext,
 } from "../utils/delivery-context.js";
 import { isDeliverableMessageChannel, isInternalMessageChannel } from "../utils/message-channel.js";
+import { resolveAgentConfig } from "./agent-scope.js";
 import {
   buildAnnounceIdFromChildRun,
   buildAnnounceIdempotencyKey,
@@ -761,9 +762,24 @@ async function sendSubagentAnnounceDirectly(params: {
     const hasCompletionDirectTarget =
       !params.requesterIsSubagent && Boolean(completionChannel) && Boolean(completionTo);
 
+    // When reviewBeforeDelivery is enabled for the requester agent, suppress
+    // the direct completion bypass so the parent agent reviews the result first.
+    let suppressDirectForReview = false;
+    if (hasCompletionDirectTarget) {
+      const requesterAgentId = resolveAgentIdFromSessionKey(canonicalRequesterSessionKey);
+      const agentConfig = resolveAgentConfig(cfg, requesterAgentId);
+      const reviewFlag =
+        agentConfig?.subagents?.reviewBeforeDelivery ??
+        cfg.agents?.defaults?.subagents?.reviewBeforeDelivery;
+      if (reviewFlag === true) {
+        suppressDirectForReview = true;
+      }
+    }
+
     if (
       params.expectsCompletionMessage &&
       hasCompletionDirectTarget &&
+      !suppressDirectForReview &&
       params.completionMessage?.trim()
     ) {
       const forceBoundSessionDirectDelivery =
