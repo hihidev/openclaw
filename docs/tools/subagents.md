@@ -280,6 +280,62 @@ Sub-agents use a dedicated in-process queue lane:
 - Sending `/stop` in the requester chat aborts the requester session and stops any active sub-agent runs spawned from it, cascading to nested children.
 - `/subagents kill <id>` stops a specific sub-agent and cascades to its children.
 
+## Manager Pattern
+
+The **manager pattern** uses the 3-tier architecture (Main -> Orchestrator -> Workers) with `reviewBeforeDelivery` to give the main agent control over what reaches the user.
+
+### How it works
+
+1. The main agent classifies each request as DIRECT (handle itself) or DELEGATE (spawn orchestrator).
+2. The orchestrator decomposes work into subtasks and spawns leaf workers.
+3. Workers announce results back to the orchestrator (inner loop, always internal).
+4. The orchestrator synthesizes results and announces back to the main agent.
+5. With `reviewBeforeDelivery: true`, the main agent reviews and rewrites before delivering to the user.
+
+### Configuration
+
+```json5
+{
+  agents: {
+    defaults: {
+      subagents: {
+        maxSpawnDepth: 2,
+        reviewBeforeDelivery: true,
+      },
+    },
+  },
+}
+```
+
+See `docs/reference/templates/manager-config.json5` for a complete reference configuration, and `docs/reference/templates/MANAGER-SOUL.md` for the main agent SOUL.md template.
+
+### reviewBeforeDelivery
+
+When `reviewBeforeDelivery` is set to `true` (per-agent or in global defaults):
+
+- **Suppresses direct completion delivery**: subagent results are not sent directly to external channels (Telegram, Discord, Slack, WhatsApp). Instead, the parent agent receives the result for review.
+- **Neutral reply instruction**: the parent agent is told to "process this result according to your session instructions" rather than "send that user-facing update now".
+- **Per-agent override**: set `agents.list[].subagents.reviewBeforeDelivery: false` to override a global `true` for specific agents.
+- **Inner loop unaffected**: worker-to-orchestrator announces are always internal (no direct delivery), regardless of this flag.
+
+### Orchestrator role directive
+
+When `maxSpawnDepth >= 2`, depth-1 subagents receive an **orchestrator role directive** in their system prompt: decompose work, delegate via `sessions_spawn`, review results, and synthesize a final report. The directive explicitly discourages direct implementation.
+
+To further enforce delegation, deny work tools for orchestrator subagents via `tools.subagents.tools.deny`:
+
+```json5
+{
+  tools: {
+    subagents: {
+      tools: {
+        deny: ["edit", "write", "exec", "apply_patch"],
+      },
+    },
+  },
+}
+```
+
 ## Limitations
 
 - Sub-agent announce is **best-effort**. If the gateway restarts, pending "announce back" work is lost.

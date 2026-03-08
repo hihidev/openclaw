@@ -1,0 +1,35 @@
+// Reference configuration for the 3-tier manager agent pattern.
+// Main Agent (depth 0) -> Orchestrator (depth 1) -> Workers (depth 2)
+//
+// The orchestrator can only manage (work tools denied); workers do the actual work.
+// reviewBeforeDelivery ensures the main agent reviews subagent results before
+// they are sent to the user.
+{
+  agents: {
+    defaults: {
+      subagents: {
+        maxSpawnDepth: 2,        // Enable 3-tier: main -> orchestrator -> workers
+        maxConcurrent: 8,        // Global concurrency cap for subagent runs
+        maxChildrenPerAgent: 5,  // Max workers per orchestrator
+        runTimeoutSeconds: 900,  // 15 min default timeout for subagent runs
+
+        // Suppress direct delivery of subagent results to external channels.
+        // The main agent receives the result for review and synthesis first.
+        reviewBeforeDelivery: true,
+      },
+    },
+  },
+
+  tools: {
+    subagents: {
+      tools: {
+        // Deny work tools for orchestrator subagents (depth 1).
+        // Workers (depth 2) inherit the default policy and keep these tools.
+        // NOTE: This deny list applies to ALL subagent depths uniformly.
+        // The orchestrator role directive in the system prompt reinforces
+        // delegation behavior even without this deny list.
+        deny: ["edit", "write", "exec", "apply_patch"],
+      },
+    },
+  },
+}
