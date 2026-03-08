@@ -8,10 +8,10 @@
   agents: {
     defaults: {
       subagents: {
-        maxSpawnDepth: 2,        // Enable 3-tier: main -> orchestrator -> workers
-        maxConcurrent: 8,        // Global concurrency cap for subagent runs
-        maxChildrenPerAgent: 5,  // Max workers per orchestrator
-        runTimeoutSeconds: 900,  // 15 min default timeout for subagent runs
+        maxSpawnDepth: 2, // Enable 3-tier: main -> orchestrator -> workers
+        maxConcurrent: 8, // Global concurrency cap for subagent runs
+        maxChildrenPerAgent: 5, // Max workers per orchestrator
+        runTimeoutSeconds: 900, // 15 min default timeout for subagent runs
 
         // Suppress direct delivery of subagent results to external channels.
         // The main agent receives the result for review and synthesis first.
