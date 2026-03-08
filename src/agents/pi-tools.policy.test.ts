@@ -176,3 +176,66 @@ describe("resolveSubagentToolPolicy depth awareness", () => {
     expect(isToolAllowedByPolicyName("sessions_spawn", policy)).toBe(false);
   });
 });
+
+describe("orchestrator tool enforcement", () => {
+  it("orchestrator with deny config denies edit, write, exec", () => {
+    const cfg = {
+      agents: { defaults: { subagents: { maxSpawnDepth: 2 } } },
+      tools: { subagents: { tools: { deny: ["edit", "write", "exec"] } } },
+    } as unknown as OpenClawConfig;
+    const policy = resolveSubagentToolPolicy(cfg, 1);
+    expect(isToolAllowedByPolicyName("edit", policy)).toBe(false);
+    expect(isToolAllowedByPolicyName("write", policy)).toBe(false);
+    expect(isToolAllowedByPolicyName("exec", policy)).toBe(false);
+    // Management tools still allowed
+    expect(isToolAllowedByPolicyName("sessions_spawn", policy)).toBe(true);
+    expect(isToolAllowedByPolicyName("subagents", policy)).toBe(true);
+    expect(isToolAllowedByPolicyName("read", policy)).toBe(true);
+  });
+
+  it("filterToolsByPolicy for orchestrator returns only management + read tools", () => {
+    const cfg = {
+      agents: { defaults: { subagents: { maxSpawnDepth: 2 } } },
+      tools: { subagents: { tools: { deny: ["edit", "write", "exec", "apply_patch"] } } },
+    } as unknown as OpenClawConfig;
+    const policy = resolveSubagentToolPolicy(cfg, 1);
+    const allTools = [
+      createStubTool("read"),
+      createStubTool("edit"),
+      createStubTool("write"),
+      createStubTool("exec"),
+      createStubTool("apply_patch"),
+      createStubTool("sessions_spawn"),
+      createStubTool("subagents"),
+      createStubTool("sessions_list"),
+      createStubTool("sessions_history"),
+    ];
+    const filtered = filterToolsByPolicy(allTools, policy);
+    const names = filtered.map((t) => t.name);
+    expect(names).toContain("read");
+    expect(names).toContain("sessions_spawn");
+    expect(names).toContain("subagents");
+    expect(names).toContain("sessions_list");
+    expect(names).toContain("sessions_history");
+    expect(names).not.toContain("edit");
+    expect(names).not.toContain("write");
+    expect(names).not.toContain("exec");
+    expect(names).not.toContain("apply_patch");
+  });
+
+  it("worker at depth 2 gets work tools but not sessions_spawn", () => {
+    const cfg = {
+      agents: { defaults: { subagents: { maxSpawnDepth: 2 } } },
+    } as unknown as OpenClawConfig;
+    const policy = resolveSubagentToolPolicy(cfg, 2);
+    // Workers get work tools
+    expect(isToolAllowedByPolicyName("read", policy)).toBe(true);
+    expect(isToolAllowedByPolicyName("edit", policy)).toBe(true);
+    expect(isToolAllowedByPolicyName("write", policy)).toBe(true);
+    expect(isToolAllowedByPolicyName("exec", policy)).toBe(true);
+    // But cannot spawn further
+    expect(isToolAllowedByPolicyName("sessions_spawn", policy)).toBe(false);
+    expect(isToolAllowedByPolicyName("sessions_list", policy)).toBe(false);
+    expect(isToolAllowedByPolicyName("sessions_history", policy)).toBe(false);
+  });
+});
