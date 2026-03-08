@@ -2172,6 +2172,53 @@ describe("subagent announce formatting", () => {
       expect(agentSpy).toHaveBeenCalled();
     });
 
+    it("uses neutral review instruction when flag is enabled", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+        agents: {
+          list: [{ id: "main", subagents: { reviewBeforeDelivery: true } }],
+        },
+      };
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:test",
+        childRunId: "run-review-instruction-1",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        requesterOrigin: { channel: "discord", to: "channel:12345", accountId: "acct-instr" },
+        ...defaultOutcomeAnnounce,
+        expectsCompletionMessage: true,
+      });
+
+      expect(didAnnounce).toBe(true);
+      expect(agentSpy).toHaveBeenCalled();
+      const call = agentSpy.mock.calls[0]?.[0] as { params?: Record<string, unknown> };
+      const message = typeof call?.params?.message === "string" ? call.params.message : "";
+      expect(message).toContain("Process this result according to your session instructions");
+      expect(message).not.toContain("send that user-facing update now");
+    });
+
+    it("uses directive instruction when flag is off", async () => {
+      configOverride = {
+        session: { mainKey: "main", scope: "per-sender" },
+      };
+
+      const didAnnounce = await runSubagentAnnounceFlow({
+        childSessionKey: "agent:main:subagent:test",
+        childRunId: "run-review-instruction-2",
+        requesterSessionKey: "agent:main:main",
+        requesterDisplayKey: "main",
+        ...defaultOutcomeAnnounce,
+      });
+
+      expect(didAnnounce).toBe(true);
+      expect(agentSpy).toHaveBeenCalled();
+      const call = agentSpy.mock.calls[0]?.[0] as { params?: Record<string, unknown> };
+      const message = typeof call?.params?.message === "string" ? call.params.message : "";
+      expect(message).toContain("send that user-facing update now");
+      expect(message).not.toContain("Process this result according to your session instructions");
+    });
+
     it("still holds when pending descendants also exist", async () => {
       configOverride = {
         session: { mainKey: "main", scope: "per-sender" },

@@ -1095,6 +1095,7 @@ function buildAnnounceReplyInstruction(params: {
   requesterIsSubagent: boolean;
   announceType: SubagentAnnounceType;
   expectsCompletionMessage?: boolean;
+  reviewBeforeDelivery?: boolean;
 }): string {
   if (params.remainingActiveSubagentRuns > 0) {
     const activeRunsLabel = params.remainingActiveSubagentRuns === 1 ? "run" : "runs";
@@ -1102,6 +1103,9 @@ function buildAnnounceReplyInstruction(params: {
   }
   if (params.requesterIsSubagent) {
     return `Convert this completion into a concise internal orchestration update for your parent agent in your own words. Keep this internal context private (don't mention system/log/stats/session details or announce type). If this result is duplicate or no update is needed, reply ONLY: ${SILENT_REPLY_TOKEN}.`;
+  }
+  if (params.reviewBeforeDelivery) {
+    return `A completed ${params.announceType} result is above. Process this result according to your session instructions before responding to the user. Keep internal context private (don't mention system/log/stats/session details or announce type).`;
   }
   if (params.expectsCompletionMessage) {
     return `A completed ${params.announceType} is ready for user delivery. Convert the result above into your normal assistant voice and send that user-facing update now. Keep this internal context private (don't mention system/log/stats/session details or announce type).`;
@@ -1339,11 +1343,22 @@ export async function runSubagentAnnounceFlow(params: {
     } catch {
       // Best-effort only; fall back to default announce instructions when unavailable.
     }
+    // Resolve reviewBeforeDelivery for the requester agent
+    let reviewBeforeDelivery: boolean | undefined;
+    if (!requesterIsSubagent) {
+      const cfg = loadConfig();
+      const requesterAgentId = resolveAgentIdFromSessionKey(targetRequesterSessionKey);
+      const agentConfig = resolveAgentConfig(cfg, requesterAgentId);
+      reviewBeforeDelivery =
+        agentConfig?.subagents?.reviewBeforeDelivery ??
+        cfg.agents?.defaults?.subagents?.reviewBeforeDelivery;
+    }
     const replyInstruction = buildAnnounceReplyInstruction({
       remainingActiveSubagentRuns,
       requesterIsSubagent,
       announceType,
       expectsCompletionMessage,
+      reviewBeforeDelivery,
     });
     const statsLine = await buildCompactAnnounceStatsLine({
       sessionKey: params.childSessionKey,
