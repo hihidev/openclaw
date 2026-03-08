@@ -3,6 +3,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import {
   filterToolsByPolicy,
   isToolAllowedByPolicyName,
+  resolveEffectiveToolPolicy,
   resolveSubagentToolPolicy,
 } from "./pi-tools.policy.js";
 import { createStubTool } from "./test-helpers/pi-tool-stubs.js";
@@ -237,5 +238,65 @@ describe("orchestrator tool enforcement", () => {
     expect(isToolAllowedByPolicyName("sessions_spawn", policy)).toBe(false);
     expect(isToolAllowedByPolicyName("sessions_list", policy)).toBe(false);
     expect(isToolAllowedByPolicyName("sessions_history", policy)).toBe(false);
+  });
+
+  it("per-agent tools.deny on orchestrator strips work tools; default agent workers keep them", () => {
+    const cfg = {
+      agents: {
+        defaults: { subagents: { maxSpawnDepth: 2 } },
+        list: [
+          {
+            id: "orchestrator",
+            tools: { deny: ["edit", "write", "exec", "apply_patch"] },
+          },
+        ],
+      },
+    } as unknown as OpenClawConfig;
+
+    // Orchestrator agent at depth 1: per-agent deny removes work tools
+    const orchPolicy = resolveEffectiveToolPolicy({
+      config: cfg,
+      agentId: "orchestrator",
+    });
+    expect(orchPolicy.agentPolicy?.deny).toEqual(["edit", "write", "exec", "apply_patch"]);
+    const orchTools = [
+      createStubTool("read"),
+      createStubTool("edit"),
+      createStubTool("write"),
+      createStubTool("exec"),
+      createStubTool("apply_patch"),
+      createStubTool("sessions_spawn"),
+      createStubTool("subagents"),
+    ];
+    const orchFiltered = filterToolsByPolicy(orchTools, orchPolicy.agentPolicy);
+    const orchNames = orchFiltered.map((t) => t.name);
+    expect(orchNames).toContain("read");
+    expect(orchNames).toContain("sessions_spawn");
+    expect(orchNames).toContain("subagents");
+    expect(orchNames).not.toContain("edit");
+    expect(orchNames).not.toContain("write");
+    expect(orchNames).not.toContain("exec");
+    expect(orchNames).not.toContain("apply_patch");
+
+    // Worker under default agent at depth 2: no per-agent deny, keeps work tools
+    const workerPolicy = resolveEffectiveToolPolicy({
+      config: cfg,
+      agentId: "main",
+    });
+    expect(workerPolicy.agentPolicy).toBeUndefined();
+    const workerTools = [
+      createStubTool("read"),
+      createStubTool("edit"),
+      createStubTool("write"),
+      createStubTool("exec"),
+      createStubTool("apply_patch"),
+    ];
+    const workerFiltered = filterToolsByPolicy(workerTools, workerPolicy.agentPolicy);
+    const workerNames = workerFiltered.map((t) => t.name);
+    expect(workerNames).toContain("read");
+    expect(workerNames).toContain("edit");
+    expect(workerNames).toContain("write");
+    expect(workerNames).toContain("exec");
+    expect(workerNames).toContain("apply_patch");
   });
 });
