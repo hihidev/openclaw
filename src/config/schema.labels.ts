@@ -56,6 +56,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "diagnostics.cacheTrace.includeSystem": "Cache Trace Include System",
   "agents.list.*.identity.avatar": "Identity Avatar",
   "agents.list.*.skills": "Agent Skill Filter",
+  "agents.list.*.subagents.reviewBeforeDelivery": "Review Before Delivery (per-agent)",
   agents: "Agents",
   "agents.defaults": "Agent Defaults",
   "agents.list": "Agent List",

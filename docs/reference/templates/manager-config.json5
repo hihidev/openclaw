@@ -1,7 +1,8 @@
 // Reference configuration for the 3-tier manager agent pattern.
 // Main Agent (depth 0) -> Orchestrator (depth 1) -> Workers (depth 2)
 //
-// The orchestrator can only manage (work tools denied); workers do the actual work.
+// The orchestrator can only manage (work tools denied via per-agent policy);
+// workers do the actual work with full tool access.
 // reviewBeforeDelivery ensures the main agent reviews subagent results before
 // they are sent to the user.
 {
@@ -18,18 +19,15 @@
         reviewBeforeDelivery: true,
       },
     },
-  },
-
-  tools: {
-    subagents: {
-      tools: {
-        // Deny work tools for orchestrator subagents (depth 1).
-        // Workers (depth 2) inherit the default policy and keep these tools.
-        // NOTE: This deny list applies to ALL subagent depths uniformly.
-        // The orchestrator role directive in the system prompt reinforces
-        // delegation behavior even without this deny list.
-        deny: ["edit", "write", "exec", "apply_patch"],
+    list: [
+      {
+        id: "orchestrator",
+        // Deny work tools for the orchestrator agent specifically.
+        // Workers spawned under the default agent keep full tool access.
+        tools: {
+          deny: ["edit", "write", "exec", "apply_patch"],
+        },
       },
-    },
+    ],
   },
 }

@@ -320,21 +320,26 @@ When `reviewBeforeDelivery` is set to `true` (per-agent or in global defaults):
 
 ### Orchestrator role directive
 
-When `maxSpawnDepth >= 2`, depth-1 subagents receive an **orchestrator role directive** in their system prompt: decompose work, delegate via `sessions_spawn`, review results, and synthesize a final report. The directive explicitly discourages direct implementation.
+When `maxSpawnDepth >= 2`, all depth-1 subagents receive an **orchestrator role directive** in their system prompt: decompose work, delegate via `sessions_spawn`, review results, and synthesize a final report. The directive applies to every depth-1 subagent that can spawn children, not only agents named "orchestrator".
 
-To further enforce delegation, deny work tools for orchestrator subagents via `tools.subagents.tools.deny`:
+To further enforce delegation, deny work tools for a dedicated orchestrator agent via per-agent tool policy. This keeps workers (spawned under other agent IDs) with full tool access:
 
 ```json5
 {
-  tools: {
-    subagents: {
-      tools: {
-        deny: ["edit", "write", "exec", "apply_patch"],
+  agents: {
+    list: [
+      {
+        id: "orchestrator",
+        tools: {
+          deny: ["edit", "write", "exec", "apply_patch"],
+        },
       },
-    },
+    ],
   },
 }
 ```
+
+Note: using global `tools.subagents.tools.deny` would strip work tools from **all** subagent depths including workers — use per-agent `agents.list[].tools.deny` instead.
 
 ## Limitations
 
