@@ -99,6 +99,7 @@ async function deliverTextReply(params: {
   replyToId?: number;
   replyToMode: ReplyToMode;
   progress: DeliveryProgress;
+  onDeliveredMessageId?: (messageId: number, text?: string) => Promise<void> | void;
 }): Promise<void> {
   const chunks = params.chunkText(params.replyText);
   for (let i = 0; i < chunks.length; i += 1) {
@@ -112,15 +113,22 @@ async function deliverTextReply(params: {
       replyToMode: params.replyToMode,
       progress: params.progress,
     });
-    await sendTelegramText(params.bot, params.chatId, chunk.html, params.runtime, {
-      replyToMessageId: replyToForChunk,
-      replyQuoteText: params.replyQuoteText,
-      thread: params.thread,
-      textMode: "html",
-      plainText: chunk.text,
-      linkPreview: params.linkPreview,
-      replyMarkup: shouldAttachButtons ? params.replyMarkup : undefined,
-    });
+    const messageId = await sendTelegramText(
+      params.bot,
+      params.chatId,
+      chunk.html,
+      params.runtime,
+      {
+        replyToMessageId: replyToForChunk,
+        replyQuoteText: params.replyQuoteText,
+        thread: params.thread,
+        textMode: "html",
+        plainText: chunk.text,
+        linkPreview: params.linkPreview,
+        replyMarkup: shouldAttachButtons ? params.replyMarkup : undefined,
+      },
+    );
+    await params.onDeliveredMessageId?.(messageId, chunk.text);
     markReplyApplied(params.progress, replyToForChunk);
     markDelivered(params.progress);
   }
@@ -138,6 +146,7 @@ async function sendPendingFollowUpText(params: {
   replyToId?: number;
   replyToMode: ReplyToMode;
   progress: DeliveryProgress;
+  onDeliveredMessageId?: (messageId: number, text?: string) => Promise<void> | void;
 }): Promise<void> {
   const chunks = params.chunkText(params.text);
   for (let i = 0; i < chunks.length; i += 1) {
@@ -147,14 +156,21 @@ async function sendPendingFollowUpText(params: {
       replyToMode: params.replyToMode,
       progress: params.progress,
     });
-    await sendTelegramText(params.bot, params.chatId, chunk.html, params.runtime, {
-      replyToMessageId: replyToForFollowUp,
-      thread: params.thread,
-      textMode: "html",
-      plainText: chunk.text,
-      linkPreview: params.linkPreview,
-      replyMarkup: i === 0 ? params.replyMarkup : undefined,
-    });
+    const messageId = await sendTelegramText(
+      params.bot,
+      params.chatId,
+      chunk.html,
+      params.runtime,
+      {
+        replyToMessageId: replyToForFollowUp,
+        thread: params.thread,
+        textMode: "html",
+        plainText: chunk.text,
+        linkPreview: params.linkPreview,
+        replyMarkup: i === 0 ? params.replyMarkup : undefined,
+      },
+    );
+    await params.onDeliveredMessageId?.(messageId, chunk.text);
     markReplyApplied(params.progress, replyToForFollowUp);
     markDelivered(params.progress);
   }
@@ -185,6 +201,7 @@ async function sendTelegramVoiceFallbackText(opts: {
   linkPreview?: boolean;
   replyMarkup?: ReturnType<typeof buildInlineKeyboard>;
   replyQuoteText?: string;
+  onDeliveredMessageId?: (messageId: number, text?: string) => Promise<void> | void;
 }): Promise<void> {
   const chunks = opts.chunkText(opts.text);
   let appliedReplyTo = false;
@@ -192,7 +209,7 @@ async function sendTelegramVoiceFallbackText(opts: {
     const chunk = chunks[i];
     // Only apply reply reference, quote text, and buttons to the first chunk.
     const replyToForChunk = !appliedReplyTo ? opts.replyToId : undefined;
-    await sendTelegramText(opts.bot, opts.chatId, chunk.html, opts.runtime, {
+    const messageId = await sendTelegramText(opts.bot, opts.chatId, chunk.html, opts.runtime, {
       replyToMessageId: replyToForChunk,
       replyQuoteText: !appliedReplyTo ? opts.replyQuoteText : undefined,
       thread: opts.thread,
@@ -201,6 +218,7 @@ async function sendTelegramVoiceFallbackText(opts: {
       linkPreview: opts.linkPreview,
       replyMarkup: !appliedReplyTo ? opts.replyMarkup : undefined,
     });
+    await opts.onDeliveredMessageId?.(messageId, chunk.text);
     if (replyToForChunk) {
       appliedReplyTo = true;
     }
@@ -224,6 +242,7 @@ async function deliverMediaReply(params: {
   replyToId?: number;
   replyToMode: ReplyToMode;
   progress: DeliveryProgress;
+  onDeliveredMessageId?: (messageId: number, text?: string) => Promise<void> | void;
 }): Promise<void> {
   let first = true;
   let pendingFollowUpText: string | undefined;
@@ -266,7 +285,7 @@ async function deliverMediaReply(params: {
       }),
     };
     if (isGif) {
-      await sendTelegramWithThreadFallback({
+      const sent = await sendTelegramWithThreadFallback({
         operation: "sendAnimation",
         runtime: params.runtime,
         thread: params.thread,
@@ -274,9 +293,10 @@ async function deliverMediaReply(params: {
         send: (effectiveParams) =>
           params.bot.api.sendAnimation(params.chatId, file, { ...effectiveParams }),
       });
+      await params.onDeliveredMessageId?.(sent.message_id, params.reply.text);
       markDelivered(params.progress);
     } else if (kind === "image") {
-      await sendTelegramWithThreadFallback({
+      const sent = await sendTelegramWithThreadFallback({
         operation: "sendPhoto",
         runtime: params.runtime,
         thread: params.thread,
@@ -284,9 +304,10 @@ async function deliverMediaReply(params: {
         send: (effectiveParams) =>
           params.bot.api.sendPhoto(params.chatId, file, { ...effectiveParams }),
       });
+      await params.onDeliveredMessageId?.(sent.message_id, params.reply.text);
       markDelivered(params.progress);
     } else if (kind === "video") {
-      await sendTelegramWithThreadFallback({
+      const sent = await sendTelegramWithThreadFallback({
         operation: "sendVideo",
         runtime: params.runtime,
         thread: params.thread,
@@ -294,6 +315,7 @@ async function deliverMediaReply(params: {
         send: (effectiveParams) =>
           params.bot.api.sendVideo(params.chatId, file, { ...effectiveParams }),
       });
+      await params.onDeliveredMessageId?.(sent.message_id, params.reply.text);
       markDelivered(params.progress);
     } else if (kind === "audio") {
       const { useVoice } = resolveTelegramVoiceSend({
@@ -305,7 +327,7 @@ async function deliverMediaReply(params: {
       if (useVoice) {
         await params.onVoiceRecording?.();
         try {
-          await sendTelegramWithThreadFallback({
+          const sent = await sendTelegramWithThreadFallback({
             operation: "sendVoice",
             runtime: params.runtime,
             thread: params.thread,
@@ -314,6 +336,7 @@ async function deliverMediaReply(params: {
             send: (effectiveParams) =>
               params.bot.api.sendVoice(params.chatId, file, { ...effectiveParams }),
           });
+          await params.onDeliveredMessageId?.(sent.message_id, params.reply.text);
           markDelivered(params.progress);
         } catch (voiceErr) {
           if (isVoiceMessagesForbidden(voiceErr)) {
@@ -340,6 +363,7 @@ async function deliverMediaReply(params: {
               linkPreview: params.linkPreview,
               replyMarkup: params.replyMarkup,
               replyQuoteText: params.replyQuoteText,
+              onDeliveredMessageId: params.onDeliveredMessageId,
             });
             markReplyApplied(params.progress, voiceFallbackReplyTo);
             markDelivered(params.progress);
@@ -352,7 +376,7 @@ async function deliverMediaReply(params: {
             const noCaptionParams = { ...mediaParams };
             delete noCaptionParams.caption;
             delete noCaptionParams.parse_mode;
-            await sendTelegramWithThreadFallback({
+            const sent = await sendTelegramWithThreadFallback({
               operation: "sendVoice",
               runtime: params.runtime,
               thread: params.thread,
@@ -360,6 +384,7 @@ async function deliverMediaReply(params: {
               send: (effectiveParams) =>
                 params.bot.api.sendVoice(params.chatId, file, { ...effectiveParams }),
             });
+            await params.onDeliveredMessageId?.(sent.message_id, params.reply.text);
             markDelivered(params.progress);
             const fallbackText = params.reply.text;
             if (fallbackText?.trim()) {
@@ -373,6 +398,7 @@ async function deliverMediaReply(params: {
                 thread: params.thread,
                 linkPreview: params.linkPreview,
                 replyMarkup: params.replyMarkup,
+                onDeliveredMessageId: params.onDeliveredMessageId,
               });
             }
             markReplyApplied(params.progress, replyToMessageId);
@@ -381,7 +407,7 @@ async function deliverMediaReply(params: {
           throw voiceErr;
         }
       } else {
-        await sendTelegramWithThreadFallback({
+        const sent = await sendTelegramWithThreadFallback({
           operation: "sendAudio",
           runtime: params.runtime,
           thread: params.thread,
@@ -389,10 +415,11 @@ async function deliverMediaReply(params: {
           send: (effectiveParams) =>
             params.bot.api.sendAudio(params.chatId, file, { ...effectiveParams }),
         });
+        await params.onDeliveredMessageId?.(sent.message_id, params.reply.text);
         markDelivered(params.progress);
       }
     } else {
-      await sendTelegramWithThreadFallback({
+      const sent = await sendTelegramWithThreadFallback({
         operation: "sendDocument",
         runtime: params.runtime,
         thread: params.thread,
@@ -400,6 +427,7 @@ async function deliverMediaReply(params: {
         send: (effectiveParams) =>
           params.bot.api.sendDocument(params.chatId, file, { ...effectiveParams }),
       });
+      await params.onDeliveredMessageId?.(sent.message_id, params.reply.text);
       markDelivered(params.progress);
     }
     markReplyApplied(params.progress, replyToMessageId);
@@ -416,6 +444,7 @@ async function deliverMediaReply(params: {
         replyToId: params.replyToId,
         replyToMode: params.replyToMode,
         progress: params.progress,
+        onDeliveredMessageId: params.onDeliveredMessageId,
       });
       pendingFollowUpText = undefined;
     }
@@ -440,6 +469,7 @@ export async function deliverReplies(params: {
   linkPreview?: boolean;
   /** Optional quote text for Telegram reply_parameters. */
   replyQuoteText?: string;
+  onDeliveredMessageId?: (messageId: number, text?: string) => Promise<void> | void;
 }): Promise<{ delivered: boolean }> {
   const progress: DeliveryProgress = {
     hasReplied: false,
@@ -485,6 +515,7 @@ export async function deliverReplies(params: {
         replyToId,
         replyToMode: params.replyToMode,
         progress,
+        onDeliveredMessageId: params.onDeliveredMessageId,
       });
       continue;
     }
@@ -505,6 +536,7 @@ export async function deliverReplies(params: {
       replyToId,
       replyToMode: params.replyToMode,
       progress,
+      onDeliveredMessageId: params.onDeliveredMessageId,
     });
   }
 

@@ -88,6 +88,8 @@ export function createTelegramDraftStream(params: {
   minInitialChars?: number;
   /** Optional preview renderer (e.g. markdown -> HTML + parse mode). */
   renderText?: (text: string) => TelegramDraftPreview;
+  /** Called when a preview message is created via sendMessage transport. */
+  onDeliveredPreviewMessageId?: (messageId: number, text?: string) => Promise<void> | void;
   /** Called when a late send resolves after forceNewMessage() switched generations. */
   onSupersededPreview?: (preview: SupersededTelegramPreview) => void;
   log?: (message: string) => void;
@@ -195,6 +197,7 @@ export function createTelegramDraftStream(params: {
       return true;
     }
     streamMessageId = normalizedMessageId;
+    await params.onDeliveredPreviewMessageId?.(normalizedMessageId, renderedText);
     return true;
   };
   const sendDraftTransportPreview = async ({

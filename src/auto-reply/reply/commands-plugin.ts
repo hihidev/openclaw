@@ -32,6 +32,7 @@ export const handlePluginCommand: CommandHandler = async (
   // Execute the plugin command (always returns a result)
   const result = await executePluginCommand({
     command: match.command,
+    sessionKey: params.sessionKey,
     args: match.args,
     senderId: command.senderId,
     channel: command.channel,

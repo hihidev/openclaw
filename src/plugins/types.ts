@@ -144,6 +144,8 @@ export type OpenClawPluginGatewayMethod = {
  * Context passed to plugin command handlers.
  */
 export type PluginCommandContext = {
+  /** Session key for this command when available. */
+  sessionKey?: string;
   /** The sender's identifier (e.g., Telegram user ID) */
   senderId?: string;
   /** The channel/surface (e.g., "telegram", "discord") */
@@ -339,6 +341,9 @@ export type PluginHookAgentContext = {
   sessionKey?: string;
   sessionId?: string;
   workspaceDir?: string;
+  /** Raw inbound body before prompt decoration. */
+  commandBody?: string;
+  replyToMessageId?: string;
   messageProvider?: string;
   /** What initiated this agent run: "user", "heartbeat", "cron", or "memory". */
   trigger?: string;
@@ -454,6 +459,7 @@ export type PluginHookMessageContext = {
   channelId: string;
   accountId?: string;
   conversationId?: string;
+  sessionKey?: string;
 };
 
 // message_received hook
@@ -482,6 +488,7 @@ export type PluginHookMessageSentEvent = {
   content: string;
   success: boolean;
   error?: string;
+  messageId?: string;
 };
 
 // Tool context

@@ -1,0 +1,10 @@
+{
+  "id": "telegram-workspace",
+  "name": "Telegram Workspace",
+  "description": "One-DM workspace/task routing for direct Telegram conversations with cos.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

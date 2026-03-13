@@ -144,6 +144,7 @@ describe("registerTelegramNativeCommands (plugin auth)", () => {
     expect(matchPluginCommand).toHaveBeenCalled();
     expect(executePluginCommand).toHaveBeenCalledWith(
       expect.objectContaining({
+        channelId: "telegram",
         isAuthorizedSender: false,
       }),
     );

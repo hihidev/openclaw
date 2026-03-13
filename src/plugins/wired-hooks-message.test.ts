@@ -46,12 +46,12 @@ describe("message_sent hook runner", () => {
     const runner = createHookRunner(registry);
 
     await runner.runMessageSent(
-      { to: "user-123", content: "hello", success: true },
+      { to: "user-123", content: "hello", success: true, messageId: "out-1" },
       { channelId: "telegram" },
     );
 
     expect(handler).toHaveBeenCalledWith(
-      { to: "user-123", content: "hello", success: true },
+      { to: "user-123", content: "hello", success: true, messageId: "out-1" },
       { channelId: "telegram" },
     );
   });

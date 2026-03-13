@@ -52,6 +52,10 @@ export type RunEmbeddedPiAgentParams = {
   currentThreadTs?: string;
   /** Current inbound message id for action fallbacks (e.g. Telegram react). */
   currentMessageId?: string | number;
+  /** Raw inbound body before prompt decoration. */
+  commandBody?: string;
+  /** Current inbound reply target id when available. */
+  replyToMessageId?: string | number;
   /** Reply-to mode for Slack auto-threading. */
   replyToMode?: "off" | "first" | "all";
   /** Mutable ref to track if a reply was sent (for "first" mode). */

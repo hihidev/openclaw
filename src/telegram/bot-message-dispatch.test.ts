@@ -2,6 +2,7 @@ import path from "node:path";
 import type { Bot } from "grammy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { STATE_DIR } from "../config/paths.js";
+import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import {
   createSequencedTestDraftStream,
   createTestDraftStream,
@@ -11,6 +12,7 @@ const createTelegramDraftStream = vi.hoisted(() => vi.fn());
 const dispatchReplyWithBufferedBlockDispatcher = vi.hoisted(() => vi.fn());
 const deliverReplies = vi.hoisted(() => vi.fn());
 const editMessageTelegram = vi.hoisted(() => vi.fn());
+const runMessageSent = vi.hoisted(() => vi.fn());
 const loadSessionStore = vi.hoisted(() => vi.fn());
 const resolveStorePath = vi.hoisted(() => vi.fn(() => "/tmp/sessions.json"));
 
@@ -35,6 +37,13 @@ vi.mock("../config/sessions.js", async () => ({
   resolveStorePath,
 }));
 
+vi.mock("../plugins/hook-runner-global.js", async () => ({
+  getGlobalHookRunner: vi.fn(() => ({
+    hasHooks: vi.fn((hookName: string) => hookName === "message_sent"),
+    runMessageSent,
+  })),
+}));
+
 vi.mock("./sticker-cache.js", () => ({
   cacheSticker: vi.fn(),
   describeStickerImage: vi.fn(),
@@ -50,6 +59,7 @@ describe("dispatchTelegramMessage draft streaming", () => {
     dispatchReplyWithBufferedBlockDispatcher.mockClear();
     deliverReplies.mockClear();
     editMessageTelegram.mockClear();
+    runMessageSent.mockClear();
     loadSessionStore.mockClear();
     resolveStorePath.mockClear();
     resolveStorePath.mockReturnValue("/tmp/sessions.json");
@@ -205,6 +215,40 @@ describe("dispatchTelegramMessage draft streaming", () => {
     );
     expect(editMessageTelegram).not.toHaveBeenCalled();
     expect(draftStream.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("emits a message_sent hook with delivered telegram message ids", async () => {
+    setupDraftStreams();
+    dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async ({ dispatcherOptions }) => {
+      await dispatcherOptions.deliver({ text: "Hello" }, { kind: "final" });
+      return { queuedFinal: true };
+    });
+    deliverReplies.mockImplementation(async ({ onDeliveredMessageId }) => {
+      await onDeliveredMessageId?.(999, "Hello");
+      return { delivered: true };
+    });
+
+    await dispatchWithContext({
+      context: createContext({
+        ctxPayload: {} as unknown as TelegramMessageContext["ctxPayload"],
+      }),
+    });
+
+    expect(getGlobalHookRunner).toHaveBeenCalled();
+    expect(runMessageSent).toHaveBeenCalledWith(
+      {
+        to: "telegram:123",
+        content: "Hello",
+        success: true,
+        messageId: "999",
+      },
+      {
+        channelId: "telegram",
+        accountId: "default",
+        conversationId: "telegram:123",
+        sessionKey: undefined,
+      },
+    );
   });
 
   it("uses 30-char preview debounce for legacy block stream mode", async () => {

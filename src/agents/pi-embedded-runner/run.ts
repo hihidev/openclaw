@@ -262,6 +262,9 @@ export async function runEmbeddedPiAgent(
         sessionKey: params.sessionKey,
         sessionId: params.sessionId,
         workspaceDir: resolvedWorkspace,
+        commandBody: params.commandBody,
+        replyToMessageId:
+          params.replyToMessageId != null ? String(params.replyToMessageId) : undefined,
         messageProvider: params.messageProvider ?? undefined,
         trigger: params.trigger,
         channelId: params.messageChannel ?? params.messageProvider ?? undefined,
@@ -738,6 +741,7 @@ export async function runEmbeddedPiAgent(
             agentDir,
             config: params.config,
             skillsSnapshot: params.skillsSnapshot,
+            commandBody: params.commandBody,
             prompt,
             images: params.images,
             disableTools: params.disableTools,

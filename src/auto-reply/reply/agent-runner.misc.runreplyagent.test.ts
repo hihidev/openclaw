@@ -217,6 +217,151 @@ describe("runReplyAgent onAgentRunStart", () => {
   });
 });
 
+describe("runReplyAgent reply target propagation", () => {
+  it("passes the raw inbound body through to the embedded runner hook context", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "ok" }],
+      meta: {},
+    });
+
+    const typing = createMockTypingController();
+    const sessionCtx = {
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingTo: "telegram:7859931349",
+      AccountId: "default",
+      MessageSid: "msg-1",
+      CommandBody: "say hello world",
+      BodyForCommands: "say hello world",
+      BodyStripped: "say hello world",
+    } as unknown as TemplateContext;
+    const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
+    const followupRun = {
+      prompt: "say hello world",
+      summaryLine: "say hello world",
+      enqueuedAt: Date.now(),
+      run: {
+        sessionId: "session",
+        sessionKey: "agent:cos:main",
+        agentId: "cos",
+        messageProvider: "telegram",
+        sessionFile: "/tmp/session.jsonl",
+        workspaceDir: "/tmp",
+        config: {},
+        skillsSnapshot: {},
+        provider: "anthropic",
+        model: "claude",
+        thinkLevel: "low",
+        verboseLevel: "off",
+        elevatedLevel: "off",
+        bashElevated: {
+          enabled: false,
+          allowed: false,
+          defaultLevel: "off",
+        },
+        timeoutMs: 1_000,
+        blockReplyBreak: "message_end",
+      },
+    } as unknown as FollowupRun;
+
+    await runReplyAgent({
+      commandBody: "say hello world",
+      followupRun,
+      queueKey: "agent:cos:main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      defaultModel: "anthropic/claude",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    const call = runEmbeddedPiAgentMock.mock.calls[0]?.[0] as { commandBody?: string } | undefined;
+    expect(call?.commandBody).toBe("say hello world");
+  });
+
+  it("passes replyToMessageId from inbound session context to the embedded runner", async () => {
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "ok" }],
+      meta: {},
+    });
+
+    const typing = createMockTypingController();
+    const sessionCtx = {
+      Provider: "telegram",
+      Surface: "telegram",
+      OriginatingTo: "telegram:7859931349",
+      AccountId: "default",
+      MessageSid: "msg-2",
+      ReplyToId: "5481",
+      CommandBody: "Hi",
+      BodyForCommands: "Hi",
+      BodyStripped: "Hi",
+    } as unknown as TemplateContext;
+    const resolvedQueue = { mode: "interrupt" } as unknown as QueueSettings;
+    const followupRun = {
+      prompt: "hello",
+      summaryLine: "hello",
+      enqueuedAt: Date.now(),
+      run: {
+        sessionId: "session",
+        sessionKey: "agent:cos:main",
+        agentId: "cos",
+        messageProvider: "telegram",
+        sessionFile: "/tmp/session.jsonl",
+        workspaceDir: "/tmp",
+        config: {},
+        skillsSnapshot: {},
+        provider: "anthropic",
+        model: "claude",
+        thinkLevel: "low",
+        verboseLevel: "off",
+        elevatedLevel: "off",
+        bashElevated: {
+          enabled: false,
+          allowed: false,
+          defaultLevel: "off",
+        },
+        timeoutMs: 1_000,
+        blockReplyBreak: "message_end",
+      },
+    } as unknown as FollowupRun;
+
+    await runReplyAgent({
+      commandBody: "Hi",
+      followupRun,
+      queueKey: "agent:cos:main",
+      resolvedQueue,
+      shouldSteer: false,
+      shouldFollowup: false,
+      isActive: false,
+      isStreaming: false,
+      typing,
+      sessionCtx,
+      defaultModel: "anthropic/claude",
+      resolvedVerboseLevel: "off",
+      isNewSession: false,
+      blockStreamingEnabled: false,
+      resolvedBlockStreamingBreak: "message_end",
+      shouldInjectGroupIntro: false,
+      typingMode: "instant",
+    });
+
+    const call = runEmbeddedPiAgentMock.mock.calls[0]?.[0] as
+      | { replyToMessageId?: string }
+      | undefined;
+    expect(call?.replyToMessageId).toBe("5481");
+  });
+});
+
 describe("runReplyAgent authProfileId fallback scoping", () => {
   it("drops authProfileId when provider changes during fallback", async () => {
     runWithModelFallbackMock.mockImplementationOnce(

@@ -132,11 +132,22 @@ describe("message hook mappers", () => {
       accountId: "acc-1",
       conversationId: "telegram:chat:456",
     });
+    expect(
+      toPluginMessageContext(canonical, {
+        sessionKey: "agent:cos:main",
+      }),
+    ).toEqual({
+      channelId: "telegram",
+      accountId: "acc-1",
+      conversationId: "telegram:chat:456",
+      sessionKey: "agent:cos:main",
+    });
     expect(toPluginMessageSentEvent(canonical)).toEqual({
       to: "telegram:chat:456",
       content: "reply",
       success: false,
       error: "network error",
+      messageId: "out-1",
     });
     expect(toInternalMessageSentContext(canonical)).toEqual({
       to: "telegram:chat:456",

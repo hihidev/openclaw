@@ -1355,6 +1355,9 @@ export async function runEmbeddedAttempt(
           sessionKey: params.sessionKey,
           sessionId: params.sessionId,
           workspaceDir: params.workspaceDir,
+          commandBody: params.commandBody,
+          replyToMessageId:
+            params.replyToMessageId != null ? String(params.replyToMessageId) : undefined,
           messageProvider: params.messageProvider ?? undefined,
           trigger: params.trigger,
           channelId: params.messageChannel ?? params.messageProvider ?? undefined,

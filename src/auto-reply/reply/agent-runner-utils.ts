@@ -207,6 +207,7 @@ export function buildEmbeddedContextFromTemplate(params: {
       to: params.sessionCtx.To,
     }),
     messageThreadId: params.sessionCtx.MessageThreadId ?? undefined,
+    replyToMessageId: params.sessionCtx.ReplyToIdFull ?? params.sessionCtx.ReplyToId,
     // Provider threading context for tool auto-injection
     ...buildThreadingToolContext({
       sessionCtx: params.sessionCtx,

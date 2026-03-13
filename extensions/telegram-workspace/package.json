@@ -1,0 +1,12 @@
+{
+  "name": "@openclaw/telegram-workspace",
+  "version": "2026.3.2",
+  "private": true,
+  "description": "OpenClaw direct Telegram workspace task plugin",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

@@ -212,6 +212,21 @@ describe("deliverReplies", () => {
     );
   });
 
+  it("reports delivered Telegram message ids for text replies", async () => {
+    const { runtime, sendMessage, bot } = createSendMessageHarness(77);
+    const onDeliveredMessageId = vi.fn();
+
+    await deliverWith({
+      replies: [{ text: "Hello task" }],
+      runtime,
+      bot,
+      onDeliveredMessageId,
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(onDeliveredMessageId).toHaveBeenCalledWith(77, "Hello task");
+  });
+
   it("includes message_thread_id for DM topics", async () => {
     const { runtime, sendMessage, bot } = createSendMessageHarness();
 

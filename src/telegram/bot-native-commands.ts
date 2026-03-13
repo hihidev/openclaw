@@ -571,7 +571,6 @@ export const registerTelegramNativeCommands = ({
             return;
           }
           const baseSessionKey = route.sessionKey;
-          // DMs: use raw messageThreadId for thread sessions (not resolvedThreadId which is for forums)
           const dmThreadId = threadSpec.scope === "dm" ? threadSpec.id : undefined;
           const threadKeys =
             dmThreadId != null
@@ -617,7 +616,6 @@ export const registerTelegramNativeCommands = ({
             CommandTargetSessionKey: sessionKey,
             MessageThreadId: threadSpec.id,
             IsForum: isForum,
-            // Originating context for sub-agent announce routing
             OriginatingChannel: "telegram" as const,
             OriginatingTo: `telegram:${chatId}`,
           });
@@ -726,13 +724,23 @@ export const registerTelegramNativeCommands = ({
             return;
           }
           const { senderId, commandAuthorized, isGroup, isForum, resolvedThreadId } = auth;
-          const { threadSpec, mediaLocalRoots, tableMode, chunkMode } =
+          const { threadSpec, route, mediaLocalRoots, tableMode, chunkMode } =
             resolveCommandRuntimeContext({
               msg,
               isGroup,
               isForum,
               resolvedThreadId,
             });
+          const baseSessionKey = route.sessionKey;
+          const dmThreadId = threadSpec.scope === "dm" ? threadSpec.id : undefined;
+          const threadKeys =
+            dmThreadId != null
+              ? resolveThreadSessionKeys({
+                  baseSessionKey,
+                  threadId: `${chatId}:${dmThreadId}`,
+                })
+              : null;
+          const sessionKey = threadKeys?.sessionKey ?? baseSessionKey;
           const deliveryBaseOptions = buildCommandDeliveryBaseOptions({
             chatId,
             mediaLocalRoots,
@@ -747,9 +755,11 @@ export const registerTelegramNativeCommands = ({
 
           const result = await executePluginCommand({
             command: match.command,
+            sessionKey,
             args: match.args,
             senderId,
             channel: "telegram",
+            channelId: "telegram",
             isAuthorizedSender: commandAuthorized,
             commandBody,
             config: cfg,

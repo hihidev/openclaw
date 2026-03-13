@@ -242,6 +242,7 @@ function sanitizeArgs(args: string | undefined): string | undefined {
  */
 export async function executePluginCommand(params: {
   command: RegisteredPluginCommand;
+  sessionKey?: PluginCommandContext["sessionKey"];
   args?: string;
   senderId?: string;
   channel: string;
@@ -269,6 +270,7 @@ export async function executePluginCommand(params: {
   const sanitizedArgs = sanitizeArgs(args);
 
   const ctx: PluginCommandContext = {
+    sessionKey: params.sessionKey,
     senderId,
     channel,
     channelId: params.channelId,

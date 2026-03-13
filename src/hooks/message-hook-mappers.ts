@@ -139,11 +139,15 @@ export function buildCanonicalSentMessageHookContext(params: {
 
 export function toPluginMessageContext(
   canonical: CanonicalInboundMessageHookContext | CanonicalSentMessageHookContext,
+  extras?: {
+    sessionKey?: string;
+  },
 ): PluginHookMessageContext {
   return {
     channelId: canonical.channelId,
     accountId: canonical.accountId,
     conversationId: canonical.conversationId,
+    sessionKey: extras?.sessionKey,
   };
 }
 
@@ -180,6 +184,7 @@ export function toPluginMessageSentEvent(
     content: canonical.content,
     success: canonical.success,
     ...(canonical.error ? { error: canonical.error } : {}),
+    ...(canonical.messageId ? { messageId: canonical.messageId } : {}),
   };
 }
 

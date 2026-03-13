@@ -319,6 +319,7 @@ function createMessageSentEmitter(params: {
   channel: Exclude<OutboundChannel, "none">;
   to: string;
   accountId?: string;
+  session?: OutboundSessionContext;
   sessionKeyForInternalHooks?: string;
   mirrorIsGroup?: boolean;
   mirrorGroupId?: string;
@@ -345,7 +346,9 @@ function createMessageSentEmitter(params: {
       fireAndForgetHook(
         params.hookRunner!.runMessageSent(
           toPluginMessageSentEvent(canonical),
-          toPluginMessageContext(canonical),
+          toPluginMessageContext(canonical, {
+            sessionKey: params.session?.key,
+          }),
         ),
         "deliverOutboundPayloads: message_sent plugin hook failed",
         (message) => {
@@ -655,6 +658,7 @@ async function deliverOutboundPayloadsCore(
     channel,
     to,
     accountId,
+    session: params.session,
     sessionKeyForInternalHooks,
     mirrorIsGroup,
     mirrorGroupId,

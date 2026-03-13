@@ -147,6 +147,21 @@ describe("createTelegramDraftStream", () => {
     expect(api.sendMessageDraft).not.toHaveBeenCalled();
   });
 
+  it("reports preview message ids when message transport creates a visible preview", async () => {
+    const api = createMockDraftApi();
+    const onDeliveredPreviewMessageId = vi.fn();
+    const stream = createDraftStream(api, {
+      thread: { id: 42, scope: "dm" },
+      previewTransport: "message",
+      onDeliveredPreviewMessageId,
+    });
+
+    stream.update("Hello");
+    await stream.flush();
+
+    expect(onDeliveredPreviewMessageId).toHaveBeenCalledWith(17, "Hello");
+  });
+
   it("falls back to message transport when sendMessageDraft is unavailable", async () => {
     const api = createMockDraftApi();
     delete (api as { sendMessageDraft?: unknown }).sendMessageDraft;

@@ -18,7 +18,13 @@ import { resolveMarkdownTableMode } from "../config/markdown-tables.js";
 import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
 import type { OpenClawConfig, ReplyToMode, TelegramAccountConfig } from "../config/types.js";
 import { danger, logVerbose } from "../globals.js";
+import {
+  buildCanonicalSentMessageHookContext,
+  toPluginMessageContext,
+  toPluginMessageSentEvent,
+} from "../hooks/message-hook-mappers.js";
 import { getAgentScopedMediaLocalRoots } from "../media/local-roots.js";
+import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { TelegramMessageContext } from "./bot-message-context.js";
 import type { TelegramBotOptions } from "./bot.js";
@@ -187,6 +193,33 @@ export const dispatchTelegramMessage = async ({
     replyToMode !== "off" && typeof msg.message_id === "number" ? msg.message_id : undefined;
   const draftMinInitialChars = DRAFT_MIN_INITIAL_CHARS;
   const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, route.agentId);
+  const hookRunner = getGlobalHookRunner();
+  const emitTelegramMessageSent = async (params: { messageId: number; text?: string }) => {
+    if (!hookRunner?.hasHooks("message_sent")) {
+      return;
+    }
+    const canonical = buildCanonicalSentMessageHookContext({
+      to: `telegram:${chatId}`,
+      content: params.text ?? "",
+      success: true,
+      channelId: "telegram",
+      accountId: route.accountId,
+      conversationId: `telegram:${chatId}`,
+      messageId: String(params.messageId),
+      isGroup,
+      groupId: isGroup ? `telegram:${chatId}` : undefined,
+    });
+    try {
+      await hookRunner.runMessageSent(
+        toPluginMessageSentEvent(canonical),
+        toPluginMessageContext(canonical, {
+          sessionKey: ctxPayload.SessionKey,
+        }),
+      );
+    } catch (err) {
+      logVerbose(`telegram: message_sent hook failed: ${String(err)}`);
+    }
+  };
   const archivedAnswerPreviews: ArchivedPreview[] = [];
   const archivedReasoningPreviewIds: number[] = [];
   const createDraftLane = (laneName: LaneName, enabled: boolean): DraftLaneState => {
@@ -202,6 +235,10 @@ export const dispatchTelegramMessage = async ({
           replyToMessageId: draftReplyToMessageId,
           minInitialChars: draftMinInitialChars,
           renderText: renderDraftPreview,
+          onDeliveredPreviewMessageId:
+            laneName === "answer"
+              ? (messageId, text) => emitTelegramMessageSent({ messageId, text })
+              : undefined,
           onSupersededPreview:
             laneName === "answer" || laneName === "reasoning"
               ? (preview) => {
@@ -408,6 +445,11 @@ export const dispatchTelegramMessage = async ({
       ...deliveryBaseOptions,
       replies: [payload],
       onVoiceRecording: sendRecordVoice,
+      onDeliveredMessageId: (messageId, text) =>
+        emitTelegramMessageSent({
+          messageId,
+          text: text ?? payload.text,
+        }),
     });
     if (result.delivered) {
       deliveryState.markDelivered();
