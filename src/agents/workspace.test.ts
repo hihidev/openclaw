@@ -381,6 +381,35 @@ describe("loadWorkspaceBootstrapFiles", () => {
       await fs.rm(rootDir, { recursive: true, force: true });
     }
   });
+
+  it("loads AGENTS.md and SOUL.md from external symlinks", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-workspace-symlink-"));
+    try {
+      const workspaceDir = path.join(rootDir, "workspace");
+      const outsideDir = path.join(rootDir, "outside");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      await fs.mkdir(outsideDir, { recursive: true });
+      const outsideAgents = path.join(outsideDir, DEFAULT_AGENTS_FILENAME);
+      const outsideSoul = path.join(outsideDir, "SOUL.md");
+      await fs.writeFile(outsideAgents, "external agents", "utf-8");
+      await fs.writeFile(outsideSoul, "external soul", "utf-8");
+      await fs.symlink(outsideAgents, path.join(workspaceDir, DEFAULT_AGENTS_FILENAME));
+      await fs.symlink(outsideSoul, path.join(workspaceDir, "SOUL.md"));
+
+      const files = await loadWorkspaceBootstrapFiles(workspaceDir);
+      const agents = files.find((file) => file.name === DEFAULT_AGENTS_FILENAME);
+      const soul = files.find((file) => file.name === "SOUL.md");
+
+      expect(agents).toMatchObject({ missing: false, content: "external agents" });
+      expect(soul).toMatchObject({ missing: false, content: "external soul" });
+    } finally {
+      await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("filterBootstrapFilesForSession", () => {

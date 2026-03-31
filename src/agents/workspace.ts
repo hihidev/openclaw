@@ -38,6 +38,10 @@ const WORKSPACE_ONBOARDING_PROFILE_FILENAMES = [
 const workspaceTemplateCache = new Map<string, Promise<string>>();
 let gitAvailabilityPromise: Promise<boolean> | null = null;
 const MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES = 2 * 1024 * 1024;
+const EXTERNAL_SYMLINK_BOOTSTRAP_FILES = new Set([
+  DEFAULT_AGENTS_FILENAME,
+  DEFAULT_SOUL_FILENAME,
+] as const);
 
 // File content cache keyed by stable file identity to avoid stale reads.
 const workspaceFileCache = new Map<string, { content: string; identity: string }>();
@@ -53,6 +57,47 @@ function workspaceFileIdentity(stat: syncFs.Stats, canonicalPath: string): strin
   return `${canonicalPath}|${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
 }
 
+function readAllowedExternalBootstrapSymlink(filePath: string): WorkspaceGuardedReadResult | null {
+  const fileName = path.basename(filePath) as WorkspaceBootstrapFileName;
+  if (!EXTERNAL_SYMLINK_BOOTSTRAP_FILES.has(fileName)) {
+    return null;
+  }
+
+  try {
+    const linkStat = syncFs.lstatSync(filePath);
+    if (!linkStat.isSymbolicLink()) {
+      return null;
+    }
+
+    const canonicalPath = syncFs.realpathSync(filePath);
+    const targetStat = syncFs.statSync(canonicalPath);
+    if (targetStat.size > MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES) {
+      return {
+        ok: false,
+        reason: "validation",
+        error: new Error(`bootstrap file exceeds ${MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES} bytes`),
+      };
+    }
+
+    const identity = workspaceFileIdentity(targetStat, canonicalPath);
+    const cached = workspaceFileCache.get(filePath);
+    if (cached && cached.identity === identity) {
+      return { ok: true, content: cached.content };
+    }
+
+    const content = syncFs.readFileSync(canonicalPath, "utf-8");
+    workspaceFileCache.set(filePath, { content, identity });
+    return { ok: true, content };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException)?.code;
+    if (code === "ENOENT") {
+      workspaceFileCache.delete(filePath);
+      return { ok: false, reason: "path", error };
+    }
+    return { ok: false, reason: "io", error };
+  }
+}
+
 async function readWorkspaceFileWithGuards(params: {
   filePath: string;
   workspaceDir: string;
@@ -64,6 +109,10 @@ async function readWorkspaceFileWithGuards(params: {
     maxBytes: MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES,
   });
   if (!opened.ok) {
+    const externalSymlink = readAllowedExternalBootstrapSymlink(params.filePath);
+    if (externalSymlink) {
+      return externalSymlink;
+    }
     workspaceFileCache.delete(params.filePath);
     return opened;
   }
