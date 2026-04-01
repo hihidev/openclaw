@@ -1392,26 +1392,36 @@ describe("sendMessageTelegram", () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("does not retry generic grammY failed-after envelopes for non-idempotent sends", async () => {
+  it("retries generic grammY failed-after envelopes with duplicate warning", async () => {
+    vi.useFakeTimers();
     const chatId = "123";
     const sendMessage = vi
       .fn()
       .mockRejectedValueOnce(
         new Error("Network request for 'sendMessage' failed after 1 attempts."),
-      );
+      )
+      .mockResolvedValueOnce({
+        message_id: 2,
+        chat: { id: chatId },
+      });
     const api = { sendMessage } as unknown as {
       sendMessage: typeof sendMessage;
     };
 
-    await expect(
-      sendMessageTelegram(chatId, "hi", {
-        cfg: TELEGRAM_TEST_CFG,
-        token: "tok",
-        api,
-        retry: { attempts: 2, minDelayMs: 0, maxDelayMs: 0, jitter: 0 },
-      }),
-    ).rejects.toThrow(/failed after 1 attempts/i);
-    expect(sendMessage).toHaveBeenCalledTimes(1);
+    const promise = sendMessageTelegram(chatId, "hi", {
+      cfg: TELEGRAM_TEST_CFG,
+      token: "tok",
+      api,
+      retry: { attempts: 2, minDelayMs: 0, maxDelayMs: 0, jitter: 0 },
+    });
+
+    await vi.runAllTimersAsync();
+    await expect(promise).resolves.toEqual({ messageId: "2", chatId });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(String(sendMessage.mock.calls[1]?.[1] ?? "")).toMatch(
+      /^⚠️ Resent message \(attempt 2\/5\) — may be duplicated:\n\nhi$/,
+    );
+    vi.useRealTimers();
   });
 
   it("sends GIF media as animation", async () => {

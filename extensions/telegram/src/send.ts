@@ -670,6 +670,7 @@ export async function sendMessageTelegram(
   const sendTelegramTextChunk = async (
     chunk: TelegramTextChunk,
     params?: TelegramSendMessageParams,
+    retryPrefix?: string,
   ) => {
     return await withTelegramThreadFallback(
       params,
@@ -686,18 +687,19 @@ export async function sendMessageTelegram(
           ...(opts.silent === true ? { disable_notification: true } : {}),
         };
         const hasPlainParams = Object.keys(plainParams).length > 0;
+        const plainText = retryPrefix ? `${retryPrefix}${chunk.plainText}` : chunk.plainText;
         const requestPlain = (retryLabel: string) =>
           requestWithChatNotFound(
             () =>
               hasPlainParams
-                ? api.sendMessage(chatId, chunk.plainText, plainParams)
-                : api.sendMessage(chatId, chunk.plainText),
+                ? api.sendMessage(chatId, plainText, plainParams)
+                : api.sendMessage(chatId, plainText),
             retryLabel,
           );
         if (!chunk.htmlText) {
           return await requestPlain(label);
         }
-        const htmlText = chunk.htmlText;
+        const htmlText = retryPrefix ? `${retryPrefix}${chunk.htmlText}` : chunk.htmlText;
         const htmlParams: TelegramSendMessageParams = {
           parse_mode: "HTML" as const,
           ...plainParams,
@@ -741,6 +743,38 @@ export async function sendMessageTelegram(
       try {
         res = await sendTelegramTextChunk(chunk, buildTextParams(index === chunks.length - 1));
       } catch (error) {
+        // Network error retry: retry up to 4 times with a 2.5s delay, prepending a warning prefix
+        const errMsgLower = formatErrorMessage(error).toLowerCase();
+        const isNetworkRetryError =
+          isRecoverableTelegramNetworkError(error, { context: "send" }) ||
+          (errMsgLower.includes("network request") && errMsgLower.includes("failed"));
+        if (isNetworkRetryError) {
+          let networkRetryResult: TelegramMessageLike | null = null;
+          for (let attempt = 0; attempt < 5; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+            const prefix = `⚠️ Resent message (attempt ${attempt + 2}/5) — may be duplicated:\n\n`;
+            try {
+              networkRetryResult = await sendTelegramTextChunk(
+                chunk,
+                buildTextParams(index === chunks.length - 1),
+                prefix,
+              );
+              break;
+            } catch (retryError) {
+              if (attempt < 4) {
+                continue;
+              }
+              throw retryError;
+            }
+          }
+          if (networkRetryResult) {
+            const messageId = resolveTelegramMessageIdOrThrow(networkRetryResult, context);
+            recordSentMessage(chatId, messageId);
+            lastMessageId = String(messageId);
+            lastChatId = String(networkRetryResult.chat?.id ?? chatId);
+            continue;
+          }
+        }
         const retryLimit = retryChunkLimits[retryIndex];
         const canRetry =
           retryLimit != null &&

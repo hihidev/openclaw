@@ -38,11 +38,6 @@ const WORKSPACE_ONBOARDING_PROFILE_FILENAMES = [
 const workspaceTemplateCache = new Map<string, Promise<string>>();
 let gitAvailabilityPromise: Promise<boolean> | null = null;
 const MAX_WORKSPACE_BOOTSTRAP_FILE_BYTES = 2 * 1024 * 1024;
-const EXTERNAL_SYMLINK_BOOTSTRAP_FILES = new Set([
-  DEFAULT_AGENTS_FILENAME,
-  DEFAULT_SOUL_FILENAME,
-] as const);
-
 // File content cache keyed by stable file identity to avoid stale reads.
 const workspaceFileCache = new Map<string, { content: string; identity: string }>();
 
@@ -58,8 +53,8 @@ function workspaceFileIdentity(stat: syncFs.Stats, canonicalPath: string): strin
 }
 
 function readAllowedExternalBootstrapSymlink(filePath: string): WorkspaceGuardedReadResult | null {
-  const fileName = path.basename(filePath) as WorkspaceBootstrapFileName;
-  if (!EXTERNAL_SYMLINK_BOOTSTRAP_FILES.has(fileName)) {
+  const fileName = path.basename(filePath);
+  if (fileName !== DEFAULT_AGENTS_FILENAME && fileName !== DEFAULT_SOUL_FILENAME) {
     return null;
   }
 
