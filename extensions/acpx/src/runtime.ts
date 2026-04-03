@@ -130,6 +130,10 @@ function shouldRetainNamedSessionForDeadStatus(detail: AcpxJsonObject | undefine
   if (status !== "dead") {
     return false;
   }
+  // In acpx, "dead" with "queue owner unavailable" is a queue-owner/socket health result,
+  // not proof that the durable named session is unrecoverable. Replacing immediately here
+  // can revive completed sessions unnecessarily and, when launcher-based agents are used,
+  // leak extra descendants on every repair cycle.
   const summary = asTrimmedString(detail?.summary)?.toLowerCase();
   return summary?.includes("queue owner unavailable") ?? false;
 }
@@ -440,16 +444,13 @@ export class AcpxRuntime implements AcpRuntime {
     if (status === "dead") {
       const summary = summarizeLogText(asOptionalString(detail?.summary) ?? "");
       if (shouldRetainNamedSessionForDeadStatus(detail)) {
-        return {
-          replace: true,
-          replacementEvents: await this.replaceDeadNamedSession({
-            detail,
-            sessionName: params.sessionName,
-            agent: params.agent,
-            cwd: params.cwd,
-            logContext: `status=${status} summary=${summary || "<empty>"}`,
-          }),
-        };
+        // Keep the named session and let future prompt/load paths reconnect the owner if needed.
+        // Treating this as a hard-dead replacement trigger caused repeated repair loops for
+        // finished ACP tasks in production.
+        this.logger?.warn?.(
+          `acpx ensureSession retaining dead named session with recoverable status: session=${params.sessionName} cwd=${params.cwd} status=${status} summary=${summary || "<empty>"}`,
+        );
+        return { replace: false };
       }
       this.logger?.warn?.(
         `acpx ensureSession replacing dead named session: session=${params.sessionName} cwd=${params.cwd} status=${status} summary=${summary || "<empty>"}`,
@@ -512,14 +513,13 @@ export class AcpxRuntime implements AcpRuntime {
     if (status === "dead") {
       const summary = summarizeLogText(asOptionalString(detail?.summary) ?? "");
       if (shouldRetainNamedSessionForDeadStatus(detail)) {
+        // Same reasoning as the normal post-ensure status probe above: this is recoverable
+        // queue-owner loss, not evidence that the named session itself must be recreated.
+        this.logger?.warn?.(
+          `acpx ensureSession retaining dead named session after ensure failure with recoverable status: session=${params.sessionName} cwd=${params.cwd} status=${status} summary=${summary || "<empty>"}`,
+        );
         return {
-          events: await this.replaceDeadNamedSession({
-            detail,
-            sessionName: params.sessionName,
-            agent: params.agent,
-            cwd: params.cwd,
-            logContext: `status=${status} summary=${summary || "<empty>"}`,
-          }),
+          events,
           skipPostEnsureReplacement: true,
         };
       }

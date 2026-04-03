@@ -16,9 +16,12 @@ describe("resolveAcpxAgentCommand", () => {
     ["gemini", "gemini --acp"],
     ["openclaw", "openclaw acp"],
     ["copilot", "copilot --acp --stdio"],
-    ["pi", "npx -y pi-acp@0.0.22"],
-    ["codex", "npx -y @zed-industries/codex-acp@0.9.5"],
-    ["claude", "npx -y @zed-industries/claude-agent-acp@0.21.0"],
+    ["pi", "npx pi-acp@^0.0.22"],
+    ["codex", "npx @zed-industries/codex-acp@^0.10.0"],
+    ["claude", "npx -y @agentclientprotocol/claude-agent-acp@^0.24.2"],
+    ["kiro", "kiro-cli-chat acp"],
+    ["qoder", "qodercli --acp"],
+    ["trae", "traecli acp serve"],
   ])("uses the current acpx built-in for %s by default", async (agent, expected) => {
     spawnAndCollectMock.mockResolvedValueOnce({
       stdout: JSON.stringify({ agents: {} }),

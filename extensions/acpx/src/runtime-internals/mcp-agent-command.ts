@@ -4,10 +4,10 @@ import { spawnAndCollect, type SpawnCommandOptions } from "./process.js";
 
 // Keep this mirror aligned with openclaw/acpx src/agent-registry.ts built-ins.
 const ACPX_BUILTIN_AGENT_COMMANDS: Record<string, string> = {
-  pi: "npx -y pi-acp@0.0.22",
+  pi: "npx pi-acp@^0.0.22",
   openclaw: "openclaw acp",
-  codex: "npx -y @zed-industries/codex-acp@0.9.5",
-  claude: "npx -y @zed-industries/claude-agent-acp@0.21.0",
+  codex: "npx @zed-industries/codex-acp@^0.10.0",
+  claude: "npx -y @agentclientprotocol/claude-agent-acp@^0.24.2",
   gemini: "gemini --acp",
   cursor: "cursor-agent acp",
   copilot: "copilot --acp --stdio",
@@ -15,9 +15,11 @@ const ACPX_BUILTIN_AGENT_COMMANDS: Record<string, string> = {
   iflow: "iflow --experimental-acp",
   kilocode: "npx -y @kilocode/cli acp",
   kimi: "kimi acp",
-  kiro: "kiro-cli acp",
+  kiro: "kiro-cli-chat acp",
   opencode: "npx -y opencode-ai acp",
+  qoder: "qodercli --acp",
   qwen: "qwen --acp",
+  trae: "traecli acp serve",
 };
 
 const MCP_PROXY_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "mcp-proxy.mjs");
@@ -113,7 +115,10 @@ export async function resolveAcpxAgentCommand(params: {
     stripProviderAuthEnvVars: params.stripProviderAuthEnvVars,
     spawnOptions: params.spawnOptions,
   });
-  return overrides[normalizedAgent] ?? ACPX_BUILTIN_AGENT_COMMANDS[normalizedAgent] ?? null;
+  if (overrides[normalizedAgent]) {
+    return overrides[normalizedAgent];
+  }
+  return ACPX_BUILTIN_AGENT_COMMANDS[normalizedAgent] ?? null;
 }
 
 export function buildMcpProxyAgentCommand(params: {
