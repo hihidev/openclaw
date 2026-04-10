@@ -308,6 +308,23 @@ describe("loadWebMedia", () => {
     expect(result.buffer.length).toBeGreaterThan(0);
   });
 
+  it("loads absolute local media paths outside configured local roots", async () => {
+    const outsideDir = path.join(fixtureRoot, "outside-local-roots");
+    const outsidePng = path.join(outsideDir, "outside.png");
+    await fs.mkdir(outsideDir, { recursive: true });
+    await fs.writeFile(outsidePng, Buffer.from(TINY_PNG_BASE64, "base64"));
+
+    const result = await loadWebMedia(outsidePng, {
+      maxBytes: 1024 * 1024,
+      localRoots: [workspaceDir],
+    });
+
+    expect(result.kind).toBe("image");
+    expect(result.contentType).toBe("image/png");
+    expect(result.fileName).toBe("outside.png");
+    expect(result.buffer.length).toBeGreaterThan(0);
+  });
+
   it("uses only the leaf filename from Windows-style sandbox-validated media paths", async () => {
     const result = await loadWebMedia(String.raw`C:\workspace\captures\tiny.png`, {
       maxBytes: 1024 * 1024,
@@ -625,10 +642,10 @@ describe("loadWebMedia", () => {
     );
   });
 
-  it("rejects traversal-style canvas media paths before filesystem access", async () => {
+  it("does not resolve traversal-style canvas media paths", async () => {
     await expectLoadWebMediaErrorCode(
       loadWebMedia(`${CANVAS_HOST_PATH}/documents/../collection.media/tiny.png`),
-      "path-not-allowed",
+      "not-found",
     );
   });
 

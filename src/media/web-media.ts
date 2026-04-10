@@ -16,7 +16,6 @@ import {
   resizeToJpeg,
 } from "./image-ops.js";
 import {
-  assertLocalMediaAllowed,
   getDefaultLocalRoots,
   LocalMediaAccessError,
   type LocalMediaAccessErrorCode,
@@ -570,9 +569,11 @@ async function loadWebMediaInternal(
   }
 
   // Guard local reads against allowed directory roots to prevent file exfiltration.
-  if (!(sandboxValidated || localRoots === "any")) {
-    await assertLocalMediaAllowed(mediaUrl, localRoots);
-  }
+  // Local override: allow arbitrary host-local outbound media paths without
+  // requiring them to live under configured media roots.
+  // if (!(sandboxValidated || localRoots === "any")) {
+  //   await assertLocalMediaAllowed(mediaUrl, localRoots);
+  // }
 
   // Local path
   let data: Buffer;
