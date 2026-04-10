@@ -34,6 +34,7 @@ import {
   resolvePromptBuildHookResult,
   resolvePromptModeForSession,
   shouldWarnOnOrphanedUserRepair,
+  wrapStreamFnPromoteMinimaxXmlToolCalls,
   wrapStreamFnRepairMalformedToolCallArguments,
   wrapStreamFnSanitizeMalformedToolCalls,
   wrapStreamFnTrimToolCallNames,
@@ -3026,6 +3027,78 @@ describe("wrapStreamFnSanitizeMalformedToolCalls", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("wrapStreamFnPromoteMinimaxXmlToolCalls", () => {
+  async function invokeWrappedStream(baseFn: (...args: never[]) => unknown) {
+    return await invokeWrappedTestStream(
+      (innerBaseFn) =>
+        wrapStreamFnPromoteMinimaxXmlToolCalls(innerBaseFn as never, new Set(["claude_flow_wait"])),
+      baseFn,
+    );
+  }
+
+  it("promotes pure MiniMax XML tool-call text in the final message to a toolCall block", async () => {
+    const finalMessage = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        { type: "thinking", thinking: "Need to call the tool." },
+        {
+          type: "text",
+          text: `
+
+<invoke name="claude_flow_wait">
+<parameter name="flowId">13ffc800-cd2d-4c17-8928-e0fbc874b13d</parameter>
+</invoke>
+</minimax:tool_call>`,
+        },
+      ],
+    };
+    const baseFn = vi.fn(() => createFakeStream({ events: [], resultMessage: finalMessage }));
+
+    const stream = await invokeWrappedStream(baseFn);
+    const result = (await stream.result()) as {
+      stopReason?: string;
+      content: Array<Record<string, unknown>>;
+    };
+
+    expect(result.stopReason).toBe("toolUse");
+    expect(result.content[0]).toEqual({ type: "thinking", thinking: "Need to call the tool." });
+    expect(result.content[1]).toMatchObject({
+      type: "toolCall",
+      name: "claude_flow_wait",
+      arguments: { flowId: "13ffc800-cd2d-4c17-8928-e0fbc874b13d" },
+    });
+    expect(typeof result.content[1]?.id).toBe("string");
+  });
+
+  it("does not promote mixed prose and MiniMax XML text", async () => {
+    const finalMessage = {
+      role: "assistant",
+      stopReason: "stop",
+      content: [
+        {
+          type: "text",
+          text: `I need to wait now.
+<invoke name="claude_flow_wait">
+<parameter name="flowId">x</parameter>
+</invoke>
+</minimax:tool_call>`,
+        },
+      ],
+    };
+    const baseFn = vi.fn(() => createFakeStream({ events: [], resultMessage: finalMessage }));
+
+    const stream = await invokeWrappedStream(baseFn);
+    const result = (await stream.result()) as {
+      stopReason?: string;
+      content: Array<Record<string, unknown>>;
+    };
+
+    expect(result.stopReason).toBe("stop");
+    expect(result.content).toEqual(finalMessage.content);
   });
 });
 

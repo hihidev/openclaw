@@ -339,6 +339,7 @@ import {
 } from "./attempt.tool-call-argument-repair.js";
 import {
   sanitizeReplayToolCallIdsForStream,
+  wrapStreamFnPromoteMinimaxXmlToolCalls,
   wrapStreamFnSanitizeMalformedToolCalls,
   wrapStreamFnTrimToolCallNames,
 } from "./attempt.tool-call-normalization.js";
@@ -403,6 +404,7 @@ export {
   wrapStreamFnRepairMalformedToolCallArguments,
 } from "./attempt.tool-call-argument-repair.js";
 export {
+  wrapStreamFnPromoteMinimaxXmlToolCalls,
   wrapStreamFnSanitizeMalformedToolCalls,
   wrapStreamFnTrimToolCallNames,
 } from "./attempt.tool-call-normalization.js";
@@ -2471,6 +2473,16 @@ export async function runEmbeddedAttempt(
           unknownToolThreshold: resolveUnknownToolGuardThreshold(clientToolLoopDetection),
         },
       );
+
+      if (
+        params.model.api === "anthropic-messages" &&
+        params.provider.trim().toLowerCase() === "minimax"
+      ) {
+        activeSession.agent.streamFn = wrapStreamFnPromoteMinimaxXmlToolCalls(
+          activeSession.agent.streamFn,
+          allowedToolNames,
+        );
+      }
 
       if (
         shouldRepairMalformedToolCallArguments({

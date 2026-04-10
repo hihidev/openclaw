@@ -23,6 +23,17 @@ type UnknownToolLoopGuardState = {
   countedMessages: WeakSet<object>;
 };
 
+type AssistantTextBlock = {
+  type?: unknown;
+  text?: unknown;
+};
+
+type PromotableAssistantMessage = {
+  role?: unknown;
+  stopReason?: unknown;
+  content?: unknown;
+};
+
 function resolveCaseInsensitiveAllowedToolName(
   rawName: string,
   allowedToolNames?: Set<string>,
@@ -224,6 +235,89 @@ function normalizeToolCallNameForDispatch(
 
 function isToolCallBlockType(type: unknown): boolean {
   return type === "toolCall" || type === "toolUse" || type === "functionCall";
+}
+
+function tryParseMinimaxXmlScalar(rawValue: string): unknown {
+  const trimmed = rawValue.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed === "true") {
+    return true;
+  }
+  if (trimmed === "false") {
+    return false;
+  }
+  if (trimmed === "null") {
+    return null;
+  }
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(trimmed)) {
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+function tryParseMinimaxXmlToolCallText(
+  text: string,
+): { name: string; arguments: Record<string, unknown> } | null {
+  const trimmed = text.trim();
+  if (!trimmed || !trimmed.includes("<invoke")) {
+    return null;
+  }
+
+  let normalized = trimmed.replace(/^\s*<minimax:tool_call>\s*/i, "");
+  normalized = normalized.replace(/\s*<\/minimax:tool_call>\s*$/i, "");
+
+  const invokeMatch = normalized.match(
+    /^<invoke\s+name=(["'])([^"'<>]+)\1>\s*([\s\S]*?)\s*<\/invoke>\s*$/i,
+  );
+  if (!invokeMatch) {
+    return null;
+  }
+
+  const toolName = invokeMatch[2]?.trim();
+  const body = invokeMatch[3] ?? "";
+  if (!toolName) {
+    return null;
+  }
+
+  const argumentsRecord: Record<string, unknown> = {};
+  const parameterRe = /<parameter\s+name=(["'])([^"'<>]+)\1>\s*([\s\S]*?)\s*<\/parameter>/gi;
+  let cursor = 0;
+  let sawParameter = false;
+
+  for (const match of body.matchAll(parameterRe)) {
+    const start = match.index ?? 0;
+    if (body.slice(cursor, start).trim()) {
+      return null;
+    }
+    const parameterName = match[2]?.trim();
+    if (!parameterName) {
+      return null;
+    }
+    argumentsRecord[parameterName] = tryParseMinimaxXmlScalar(match[3] ?? "");
+    cursor = start + match[0].length;
+    sawParameter = true;
+  }
+
+  if (body.slice(cursor).trim()) {
+    return null;
+  }
+
+  return {
+    name: toolName,
+    arguments: sawParameter ? argumentsRecord : {},
+  };
 }
 
 const REPLAY_TOOL_CALL_NAME_MAX_CHARS = 64;
@@ -611,6 +705,62 @@ function normalizeToolCallIdsInMessage(message: unknown): void {
   }
 }
 
+function promoteMinimaxXmlTextToolCallInMessage(
+  message: unknown,
+  allowedToolNames?: Set<string>,
+): boolean {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+  const typedMessage = message as PromotableAssistantMessage;
+  if (typedMessage.role !== "assistant" || !Array.isArray(typedMessage.content)) {
+    return false;
+  }
+
+  const content = typedMessage.content as Array<Record<string, unknown>>;
+  const nonThinkingBlocks = content.filter((block) => {
+    if (!block || typeof block !== "object") {
+      return false;
+    }
+    return block.type !== "thinking";
+  });
+  if (nonThinkingBlocks.length !== 1) {
+    return false;
+  }
+
+  const onlyBlock = nonThinkingBlocks[0] as AssistantTextBlock;
+  if (onlyBlock.type !== "text" || typeof onlyBlock.text !== "string") {
+    return false;
+  }
+
+  const parsed = tryParseMinimaxXmlToolCallText(onlyBlock.text);
+  if (!parsed) {
+    return false;
+  }
+
+  const normalizedName = normalizeToolCallNameForDispatch(parsed.name, allowedToolNames);
+  const resolvedName = resolveExactAllowedToolName(normalizedName, allowedToolNames);
+  if (allowedToolNames && allowedToolNames.size > 0 && !resolvedName) {
+    return false;
+  }
+
+  const nextContent = content.map((block) => {
+    if (block !== onlyBlock) {
+      return block;
+    }
+    return {
+      type: "toolCall",
+      name: resolvedName ?? normalizedName,
+      arguments: parsed.arguments,
+    };
+  });
+
+  typedMessage.content = nextContent;
+  typedMessage.stopReason = "toolUse";
+  trimWhitespaceFromToolCallNamesInMessage(typedMessage, allowedToolNames);
+  return true;
+}
+
 function trimWhitespaceFromToolCallNamesInMessage(
   message: unknown,
   allowedToolNames?: Set<string>,
@@ -896,6 +1046,42 @@ export function sanitizeReplayToolCallIdsForStream(params: {
     return sanitized;
   }
   return sanitizeToolUseResultPairing(sanitized);
+}
+
+function wrapStreamPromoteMinimaxXmlToolCalls(
+  stream: ReturnType<typeof streamSimple>,
+  allowedToolNames?: Set<string>,
+): ReturnType<typeof streamSimple> {
+  const originalResult = stream.result.bind(stream);
+  stream.result = async () => {
+    const message = await originalResult();
+    promoteMinimaxXmlTextToolCallInMessage(message, allowedToolNames);
+    return message;
+  };
+
+  wrapStreamObjectEvents(stream, (event) => {
+    if (event.type === "done" || event.type === "error") {
+      promoteMinimaxXmlTextToolCallInMessage(event.message, allowedToolNames);
+      promoteMinimaxXmlTextToolCallInMessage(event.partial, allowedToolNames);
+    }
+  });
+
+  return stream;
+}
+
+export function wrapStreamFnPromoteMinimaxXmlToolCalls(
+  baseFn: StreamFn,
+  allowedToolNames?: Set<string>,
+): StreamFn {
+  return (model, context, options) => {
+    const maybeStream = baseFn(model, context, options);
+    if (maybeStream && typeof maybeStream === "object" && "then" in maybeStream) {
+      return Promise.resolve(maybeStream).then((stream) =>
+        wrapStreamPromoteMinimaxXmlToolCalls(stream, allowedToolNames),
+      );
+    }
+    return wrapStreamPromoteMinimaxXmlToolCalls(maybeStream, allowedToolNames);
+  };
 }
 
 export function wrapStreamFnSanitizeMalformedToolCalls(
