@@ -2288,6 +2288,35 @@ describe("sendMessageTelegram", () => {
     expect(sendMessage.mock.calls.map((call) => String(call[1] ?? "")).join("")).toBe(plainText);
     expect(res.messageId).toBe("96");
   });
+
+  it("re-splits a chunk when Telegram still rejects it as too long", async () => {
+    const chatId = "123";
+    const htmlText = `<b>${"A".repeat(3900)}</b>`;
+    const tooLongError = new Error("400: Bad Request: message is too long");
+    const sendMessage = vi
+      .fn()
+      .mockRejectedValueOnce(tooLongError)
+      .mockResolvedValueOnce({ message_id: 97, chat: { id: chatId } })
+      .mockResolvedValueOnce({ message_id: 98, chat: { id: chatId } });
+    const api = { sendMessage } as unknown as { sendMessage: typeof sendMessage };
+
+    const res = await sendMessageTelegram(chatId, htmlText, {
+      token: "tok",
+      api,
+      textMode: "html",
+      buttons: [[{ text: "OK", callback_data: "ok" }]],
+    });
+
+    expect(sendMessage).toHaveBeenCalledTimes(3);
+    expect(String(sendMessage.mock.calls[0]?.[1] ?? "").length).toBeGreaterThan(3500);
+    expect(String(sendMessage.mock.calls[1]?.[1] ?? "").length).toBeLessThanOrEqual(3500);
+    expect(String(sendMessage.mock.calls[2]?.[1] ?? "").length).toBeLessThanOrEqual(3500);
+    expect(sendMessage.mock.calls[1]?.[2]?.reply_markup).toBeUndefined();
+    expect(sendMessage.mock.calls[2]?.[2]?.reply_markup).toEqual({
+      inline_keyboard: [[{ text: "OK", callback_data: "ok" }]],
+    });
+    expect(res.messageId).toBe("98");
+  });
 });
 
 describe("reactMessageTelegram", () => {

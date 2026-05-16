@@ -187,6 +187,7 @@ const MESSAGE_NOT_MODIFIED_RE =
   /400:\s*Bad Request:\s*message is not modified|MESSAGE_NOT_MODIFIED/i;
 const MESSAGE_DELETE_NOOP_RE =
   /message to delete not found|message can't be deleted|MESSAGE_ID_INVALID|MESSAGE_DELETE_FORBIDDEN/i;
+const MESSAGE_TOO_LONG_RE = /400:\s*Bad Request:\s*message is too long/i;
 const CHAT_NOT_FOUND_RE = /400: Bad Request: chat not found/i;
 const sendLogger = createSubsystemLogger("telegram/send");
 const diagLogger = createSubsystemLogger("telegram/diagnostic");
@@ -195,6 +196,11 @@ const MAX_TELEGRAM_CLIENT_OPTIONS_CACHE_SIZE = 64;
 
 export function resetTelegramClientOptionsCacheForTests(): void {
   telegramClientOptionsCache.clear();
+}
+
+function isTelegramMessageTooLongError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return MESSAGE_TOO_LONG_RE.test(message);
 }
 
 function createTelegramHttpLogger(cfg: OpenClawConfig) {
@@ -722,14 +728,44 @@ export async function sendMessageTelegram(
     chunks: TelegramTextChunk[],
     context: string,
   ): Promise<{ messageId: string; chatId: string }> => {
+    const retryChunkLimits = [3500, 3000, 2500, 2000];
     let lastMessageId = "";
     let lastChatId = chatId;
+    let retryIndex = 0;
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index];
       if (!chunk) {
         continue;
       }
-      const res = await sendTelegramTextChunk(chunk, buildTextParams(index === chunks.length - 1));
+      let res: TelegramMessageLike;
+      try {
+        res = await sendTelegramTextChunk(chunk, buildTextParams(index === chunks.length - 1));
+      } catch (error) {
+        const retryLimit = retryChunkLimits[retryIndex];
+        const canRetry =
+          retryLimit != null &&
+          isTelegramMessageTooLongError(error) &&
+          (chunk.htmlText ?? chunk.plainText).length > retryLimit;
+        if (!canRetry) {
+          throw error;
+        }
+        retryIndex += 1;
+        const splitContext = `${context} oversized chunk retry`;
+        logVerbose(`telegram ${splitContext}: resplitting failed chunk at limit ${retryLimit}`);
+        const replacementChunks = buildChunkedTextPlan(
+          chunk.plainText,
+          splitContext,
+          retryLimit,
+          chunk.plainText,
+          chunk.htmlText,
+        );
+        if (replacementChunks.length <= 1) {
+          throw error;
+        }
+        chunks.splice(index, 1, ...replacementChunks);
+        index -= 1;
+        continue;
+      }
       const messageId = resolveTelegramMessageIdOrThrow(res, context);
       recordSentMessage(chatId, messageId, cfg);
       lastMessageId = String(messageId);
@@ -738,29 +774,44 @@ export async function sendMessageTelegram(
     return { messageId: lastMessageId, chatId: lastChatId };
   };
 
-  const buildChunkedTextPlan = (rawText: string, context: string): TelegramTextChunk[] => {
-    const htmlText = renderHtmlText(rawText);
+  const buildChunkedTextPlan = (
+    rawText: string,
+    context: string,
+    limit = 4000,
+    plainFallbackText?: string,
+    htmlTextOverride?: string,
+  ): TelegramTextChunk[] => {
+    const normalizedLimit = Math.max(1, Math.floor(limit));
+    const htmlText = htmlTextOverride ?? renderHtmlText(rawText);
     const fallbackText =
-      opts.plainText ?? (textMode === "html" ? telegramHtmlToPlainTextFallback(htmlText) : rawText);
+      plainFallbackText ??
+      opts.plainText ??
+      (textMode === "html" ? telegramHtmlToPlainTextFallback(htmlText) : rawText);
     let htmlChunks: string[];
     try {
-      htmlChunks = splitTelegramHtmlChunks(htmlText, 4000);
+      htmlChunks = splitTelegramHtmlChunks(htmlText, normalizedLimit);
     } catch (error) {
       logVerbose(
         `telegram ${context} failed HTML chunk planning, retrying as plain text: ${formatErrorMessage(
           error,
         )}`,
       );
-      return splitTelegramPlainTextChunks(fallbackText, 4000).map((plainText) => ({ plainText }));
+      return splitTelegramPlainTextChunks(fallbackText, normalizedLimit).map((plainText) => ({
+        plainText,
+      }));
     }
-    const fixedPlainTextChunks = splitTelegramPlainTextChunks(fallbackText, 4000);
+    const fixedPlainTextChunks = splitTelegramPlainTextChunks(fallbackText, normalizedLimit);
     if (fixedPlainTextChunks.length > htmlChunks.length) {
       logVerbose(
         `telegram ${context} plain-text fallback needs more chunks than HTML; sending plain text`,
       );
       return fixedPlainTextChunks.map((plainText) => ({ plainText }));
     }
-    const plainTextChunks = splitTelegramPlainTextFallback(fallbackText, htmlChunks.length, 4000);
+    const plainTextChunks = splitTelegramPlainTextFallback(
+      fallbackText,
+      htmlChunks.length,
+      normalizedLimit,
+    );
     return htmlChunks.map((htmlText, index) => ({
       htmlText,
       plainText: plainTextChunks[index] ?? htmlText,
