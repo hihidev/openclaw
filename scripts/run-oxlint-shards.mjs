@@ -12,6 +12,10 @@ const env = resolveLocalHeavyCheckEnv(process.env);
 const hasMetadataOnlyFlag = extraArgs.some((arg) =>
   ["--help", "-h", "--version", "-V", "--rules", "--print-config", "--init"].includes(arg),
 );
+if (env.OPENCLAW_RUN_OXLINT !== "1" && !hasMetadataOnlyFlag) {
+  console.error("[oxlint] skipped by default; set OPENCLAW_RUN_OXLINT=1 to run.");
+  process.exit(0);
+}
 const shouldAcquireParentLock =
   !hasMetadataOnlyFlag ||
   shouldAcquireLocalHeavyCheckLockForOxlint(extraArgs, {

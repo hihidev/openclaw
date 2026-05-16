@@ -6,6 +6,7 @@ export async function main(argv = process.argv.slice(2)) {
   const timed = argv.includes("--timed");
   const includeArchitecture = argv.includes("--include-architecture");
   const includeTestTypes = argv.includes("--include-test-types");
+  const skipLint = argv.includes("--skip-lint");
 
   const tailChecks = [
     { name: "webhook body guard", args: ["lint:webhook:no-low-level-body-read"] },
@@ -62,17 +63,19 @@ export async function main(argv = process.argv.slice(2)) {
         },
       ],
     },
-    {
-      name: "lint",
-      parallel: false,
-      commands: [{ name: "lint", args: ["lint"] }],
-    },
+    skipLint
+      ? null
+      : {
+          name: "lint",
+          parallel: false,
+          commands: [{ name: "lint", args: ["lint"] }],
+        },
     {
       name: "policy guards",
       parallel: true,
       commands: tailChecks,
     },
-  ];
+  ].filter(Boolean);
 
   const timings = [];
   let exitCode = 0;

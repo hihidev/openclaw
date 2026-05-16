@@ -189,6 +189,10 @@ export async function main(argv = process.argv.slice(2), runtimeEnv = process.en
     argv,
     resolveLocalHeavyCheckEnv(runtimeEnv),
   );
+  if (env.OPENCLAW_RUN_OXLINT !== "1" && !argv.some((arg) => OXLINT_PREPARE_SKIP_FLAGS.has(arg))) {
+    console.error("[oxlint] skipped by default; set OPENCLAW_RUN_OXLINT=1 to run.");
+    return;
+  }
   const sparseTargets = filterSparseMissingOxlintTargets(policyArgs);
   const finalArgs = sparseTargets.args;
   if (sparseTargets.skippedTargets.length > 0) {
